@@ -5,6 +5,10 @@ on:
     branches: [master]
     paths:
       - "index.html"
+      - "README.md"
+      - "installer.sh"
+      - "extras/GlassIcon/install.sh"
+      - "extras/GlassIcon/uninstall.sh"
       - "assets/site.css"
       - "assets/site.js"
       - "assets/glassdock.svg"
