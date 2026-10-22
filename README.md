@@ -4,6 +4,8 @@
 
 <p align="center">Built with Python, GTK 3 and gtk-layer-shell. Designed for Sway and SwayFX, with a graphical settings app and per-monitor customization.</p>
 
+<p align="center"><a href="https://mandrusian.github.io/GlassDock/">Project website ↗</a> · <a href="https://github.com/Mandrusian/GlassDock">Source code</a></p>
+
 ---
 
 GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without replacing your compositor or desktop shell.
