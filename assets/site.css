@@ -361,3 +361,6 @@ body::before {
 @media (prefers-reduced-transparency: reduce) {
   .dock, .glass-panel, .theme-card, .mini-glass-dock, .resource { backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
+
+.scene-pink { background: linear-gradient(135deg, #ec8fcb, #ac65cb 46%, #4d4d9b); }
+.section-title { text-shadow: 0 0 30px rgba(142, 190, 255, .08); }
