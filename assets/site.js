@@ -9,6 +9,8 @@
 
       const original = label ? label.textContent : button.textContent;
       button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      button.classList.remove("is-error", "is-success");
       if (label) label.textContent = "Copying…";
 
       try {
@@ -36,12 +38,20 @@
           if (label) label.textContent = original;
           button.setAttribute("aria-label", "Copy GlassDock install command");
           button.classList.remove("is-success");
+          button.removeAttribute("aria-busy");
           button.disabled = false;
         }, 1400);
       } catch (error) {
         if (label) label.textContent = "Copy failed";
         button.setAttribute("aria-label", "Copy failed. Select the command and copy it manually.");
+        button.classList.add("is-error");
+        button.removeAttribute("aria-busy");
         button.disabled = false;
+        window.setTimeout(() => {
+          if (label) label.textContent = original;
+          button.setAttribute("aria-label", "Copy GlassDock install command");
+          button.classList.remove("is-error");
+        }, 1800);
       }
     });
   });
