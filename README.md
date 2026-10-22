@@ -35,9 +35,27 @@ Run the guided installer directly from GitHub:
 curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash
 ```
 
-It reads choices from your terminal even when launched with `curl | bash`, using `whiptail` or `dialog` when available and a simple prompt otherwise. Install / Upgrade downloads the project into `~/.local/share/GlassDock` (or `$XDG_DATA_HOME/GlassDock`) so command links never point into a temporary directory. If it detects ModernDock, the existing migration-aware installer replaces the old links and launchers while preserving settings. Dependencies are optional and only installed if you opt in. Uninstall preserves project directories and settings by default; opting to remove settings creates a backup first. Without a terminal, the installer exits safely unless you explicitly set `GLASSDOCK_ACTION=install` or `GLASSDOCK_ACTION=uninstall`.
+It reads choices from your terminal even when launched with `curl | bash`, using `whiptail` or `dialog` when available and a simple prompt otherwise. Choose **Install / Upgrade GlassDock**, **Install / Upgrade GlassIcon Studio**, **Uninstall GlassDock / ModernDock**, **Uninstall GlassIcon Studio**, or **Exit**. The source checkout is kept in `~/.local/share/GlassDock` (or `$XDG_DATA_HOME/GlassDock`) so installed command links never point into a temporary directory. If it detects ModernDock, the existing migration-aware installer replaces the old dock links and launchers while preserving settings. Dependencies are optional and only installed if you opt in. Uninstall preserves project directories and user settings by default. Without a terminal, the installer exits safely unless you set `GLASSDOCK_ACTION` explicitly.
 
 For a reviewed install, inspect [installer.sh](installer.sh) before running it.
+
+## Companion app: GlassIcon Studio
+
+GlassIcon Studio lives in [`extras/GlassIcon/`](extras/GlassIcon/) and complements the dock by managing icon themes, per-application launcher icons, and user-level file-manager/system icon overrides. It is built with Python and GTK 3, and does not need a background service.
+
+Install it from the repository root:
+
+```bash
+./extras/GlassIcon/install.sh
+```
+
+Add `--deps` to install its required system packages too (this may use `sudo`):
+
+```bash
+./extras/GlassIcon/install.sh --deps
+```
+
+Launch it with `glassicon`. Its settings and icon backups are kept in user directories. The main guided installer also offers install/upgrade and uninstall actions for GlassIcon Studio. See the [GlassIcon documentation](extras/GlassIcon/README.md) for its features, requirements, and limitations.
 
 ## Install
 
@@ -173,7 +191,8 @@ The project directory is not deleted by the uninstaller; remove it yourself afte
 ## Project layout
 
 ```text
-assets/       GlassDock icon
+assets/       GlassDock icon and website assets
+extras/       Optional companion tools, including GlassIcon Studio
 bin/          glassdock, glassdock-settings, glassdock-ctl launchers
 glassdock/    GTK dock, settings app, CLI, and core modules
 scripts/      dependency, build, install, uninstall, Sway integration, and test helpers
