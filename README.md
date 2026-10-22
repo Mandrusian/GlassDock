@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/glassdock.svg" alt="GlassDock" width="160">
+</p>
+
 # ModernDock
 
 A floating, macOS-inspired dock for **Wayland / Sway / SwayFX**, with a built-in graphical settings app.
