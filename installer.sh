@@ -9,10 +9,10 @@ APP="$DATA/applications"
 AUTO="$CONF/autostart"
 TMP=""
 trap '[ -z "$TMP" ] || rm -rf -- "$TMP"' EXIT
-die() { printf '\\033[1;31mError:\\033[0m %s\\n' "$*" >&2; exit 1; }
-info() { printf '\\033[1;36m==>\\033[0m %s\\n' "$*"; }
-ok() { printf '\\033[1;32m✓\\033[0m %s\\n' "$*"; }
-warn() { printf '\\033[1;33m!\\033[0m %s\\n' "$*"; }
+die() { printf '\033[1;31mError:\033[0m %s\n' "$*" >&2; exit 1; }
+info() { printf '\033[1;36m==>\033[0m %s\n' "$*"; }
+ok() { printf '\033[1;32m✓\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33m!\033[0m %s\n' "$*"; }
 [ "$(id -u)" -ne 0 ] || die "Run as your normal user, not root."
 
 has_glassdock() {
@@ -28,16 +28,16 @@ has_moderndock() {
  pgrep -u "$(id -u)" -f 'moderndock\.' >/dev/null 2>&1
 }
 menu() {
- printf '\\n\\033[1;37m  GlassDock Setup\\033[0m\\n  ────────────────────────────────────\\n'
+ printf '\n\033[1;37m  GlassDock Setup\033[0m\n  ────────────────────────────────────\n'
  if has_moderndock; then warn "ModernDock detected — install will migrate it to GlassDock."
  elif has_glassdock; then info "Existing GlassDock installation detected."
- else printf 'A floating glass-style dock for Wayland.\\n'; fi
+ else printf 'A floating glass-style dock for Wayland.\n'; fi
  if command -v whiptail >/dev/null 2>&1 && [ -t 0 ] && [ -t 1 ]; then
   CHOICE="$(whiptail --title 'GlassDock Setup' --menu 'Choose an action' 16 62 3 install 'Install / Upgrade GlassDock' uninstall 'Uninstall GlassDock / ModernDock' quit 'Exit without changes' 3>&1 1>&2 2>&3)" || CHOICE=quit
  elif command -v dialog >/dev/null 2>&1 && [ -t 0 ] && [ -t 1 ]; then
   CHOICE="$(dialog --title 'GlassDock Setup' --menu 'Choose an action' 16 62 3 install 'Install / Upgrade GlassDock' uninstall 'Uninstall GlassDock / ModernDock' quit 'Exit without changes' 3>&1 1>&2 2>&3)" || CHOICE=quit
  else
-  printf '\\n  1) Install / Upgrade GlassDock\\n  2) Uninstall GlassDock / ModernDock\\n  3) Exit\\n'
+  printf '\n  1) Install / Upgrade GlassDock\n  2) Uninstall GlassDock / ModernDock\n  3) Exit\n'
   if [ ! -t 0 ]; then CHOICE="${GLASSDOCK_ACTION:-install}"; warn "Non-interactive mode: $CHOICE"
   else read -r -p 'Choose [1-3]: ' a; case "$a" in 1) CHOICE=install;; 2) CHOICE=uninstall;; *) CHOICE=quit;; esac; fi
  fi
@@ -58,7 +58,7 @@ install_dock() {
  fetch_source
  local root="$TMP/GlassDock"
  if has_moderndock; then
-  printf '\\nModernDock detected. The GlassDock installer replaces old command links and launchers; settings are preserved for migration.\\n'
+  printf '\nModernDock detected. The GlassDock installer replaces old command links and launchers; settings are preserved for migration.\n'
  fi
  local deps=n
  if [ -t 0 ]; then read -r -p 'Install system dependencies too? (may use sudo) [y/N]: ' deps
@@ -67,11 +67,11 @@ install_dock() {
  info "Checking dependencies and installing…"
  "$root/scripts/install.sh"
  ok "GlassDock installed."
- printf '\\nStart:    glassdock &\\nSettings: glassdock-settings\\nStatus:   glassdock-ctl status\\n"
+ printf '\nStart:    glassdock &\nSettings: glassdock-settings\nStatus:   glassdock-ctl status\n'
 }
 uninstall_dock() {
  if ! has_glassdock && ! has_moderndock; then warn "No obvious installation detected."; fi
- printf '\\nThis removes known command links and launchers; project folders are not deleted.\\n'
+ printf '\nThis removes known command links and launchers; project folders are not deleted.\n'
  local purge=n
  if [ -t 0 ]; then read -r -p 'Also remove saved settings after making backups? [y/N]: ' purge
  else purge="${GLASSDOCK_PURGE_CONFIG:-n}"; fi
@@ -98,4 +98,4 @@ uninstall_dock() {
  ok "Cleanup complete. Project directories were preserved."
 }
 menu
-case "$CHOICE" in install) install_dock;; uninstall) uninstall_dock;; *) printf 'No changes made.\\n';; esac
+case "$CHOICE" in install) install_dock;; uninstall) uninstall_dock;; *) printf 'No changes made.\n';; esac
