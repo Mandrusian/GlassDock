@@ -32,6 +32,12 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
+      - name: Validate installer shell scripts
+        run: |
+          bash -n installer.sh
+          bash -n extras/GlassIcon/install.sh
+          bash -n extras/GlassIcon/uninstall.sh
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
