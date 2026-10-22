@@ -1,125 +1,173 @@
-<p align="center">
-  <img src="assets/glassdock.svg" alt="GlassDock" width="300">
-</p>
+<h1 align="center"><img src="assets/glassdock.svg" alt="" width="52" valign="middle" />&nbsp;GlassDock</h1>
 
-# ModernDock
+<p align="center">A floating, glass-style dock for Wayland desktops.</p>
 
-A floating, macOS-inspired dock for **Wayland / Sway / SwayFX**, with a built-in graphical settings app.
-Written for Fedora Asahi Remix (aarch64), works on any Fedora/x86-64 Sway session too.
+<p align="center">Built with Python, GTK 3 and gtk-layer-shell. Designed for Sway and SwayFX, with a graphical settings app and per-monitor customization.</p>
 
-- Pinned launchers + running-app indicators (via Sway IPC), grouped per application
-- Hover magnification, smooth animations, launch bounce, hover name labels
-- Real Wayland **layer-shell** surface (`gtk-layer-shell`): correct edge anchoring, margins, exclusive zone
-- Any edge (bottom by default), start/center/end alignment, per-monitor docks and overrides
-- Auto-hide (always / when a window overlaps), hide on fullscreen, optional overlay layer
-- Settings app: colors, gradient, opacity, border, shadow, radius, sizes, animation, indicators,
-  position, behavior, themes, launcher editor (drag to reorder), per-monitor overrides, live preview
-- Themes: Smoky Glass (default), Dark, Light, macOS-inspired, Liquid Glass-inspired, Purple / Pink, Custom
-- Needs no GNOME Shell, KDE or X11
+---
 
-## Honest notes on what it is
+GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without replacing your compositor or desktop shell.
 
-- **Python + GTK 3 + gtk-layer-shell.** Nothing is compiled to machine code; the "build" step byte-compiles
-  the sources and verifies every dependency. This keeps it simple to run on aarch64.
-- **Transparency vs blur.** The dock is always drawn translucent. **Real background blur only exists on SwayFX**:
-  the *Background blur* option asks SwayFX (`layer_effects`) to blur behind the dock. On plain Sway the request is
-  rejected, the dock stays translucent without blur, and the Status page says so. `scripts/sway-integration.sh check-blur`
-  tells you which you have.
-- **"Liquid Glass-inspired" / "macOS-inspired"** are visual styles in the spirit of those designs, not copies.
-- Tested: configuration, migrations, desktop entries, Sway IPC parsing against a mock socket, dock model/geometry,
-  magnification, indicators, settings-schema coverage, and the install/uninstall/Sway-integration scripts.
-  **The GTK drawing code was developed without access to a Wayland session**, so rendering, layer-shell placement and
-  blur must be validated on your machine. Run the tests (below) inside Sway to include the GTK smoke test.
+- **Launchers and running apps** — pin applications, group their windows, and see running-app indicators through Sway IPC.
+- **Fluid interactions** — hover magnification, smooth animations, launch bounce, app-name labels, and drag-to-reorder launchers.
+- **Wayland-native placement** — layer-shell anchoring, edge and alignment controls, margins, exclusive-zone handling, and per-monitor settings.
+- **Flexible behavior** — auto-hide, hide on fullscreen, optional overlay stacking, and login autostart controls.
+- **Graphical settings** — adjust colors, gradients, opacity, borders, shadows, radius, sizing, animations, indicators, themes, launchers, and monitor overrides with a live preview.
+- **Multiple looks** — Smoky Glass, Dark, Light, macOS-inspired, Liquid Glass-inspired, Purple/Pink, and Custom themes.
 
-## Install (Fedora Asahi Remix 44)
+## Requirements
+
+- A Wayland session with `wlr-layer-shell` support.
+- Python 3.9 or newer, GTK 3, PyGObject, Pycairo, and `gtk-layer-shell`.
+- Sway or SwayFX is recommended. Sway IPC is used for window and running-application information.
+
+GlassDock does not require GNOME Shell, KDE Plasma, or X11. The dock can be translucent on supported Wayland compositors; **background blur specifically requires SwayFX** and its `layer_effects` support.
+
+## Install
+
+Clone the repository and install the runtime dependencies using the helper for your package manager (Fedora, Debian/Ubuntu, Arch, and openSUSE are supported by the script):
 
 ```bash
-cd ~/ModernDock
-./scripts/install-deps.sh      # sudo dnf install: python3-gobject, gtk3, gtk-layer-shell, ...
-./scripts/install.sh           # checks deps, links commands into ~/.local/bin, adds a Settings launcher
-./scripts/run-tests.sh         # unit tests (GTK smoke test runs only inside a Wayland session)
-moderndock &                   # start the dock in your Sway session
-moderndock-settings            # open the settings app
+git clone https://github.com/Mandrusian/GlassDock.git
+cd GlassDock
+./scripts/install-deps.sh
+./install.sh
 ```
 
-`install.sh` runs the dock **in place** from `~/ModernDock` (nothing is copied elsewhere), so keep that folder.
-Add `--deps` to also install dependencies, `--autostart` to also enable autostart.
+The installer checks the dependencies, links the commands into `~/.local/bin`, adds a Settings launcher, and enables login autostart by default. It runs **in place** from the project directory, so keep that directory where it is. Root access is only needed when installing system packages.
 
-### Autostart (optional, after you have verified it works)
+To verify the installation, run the test suite:
 
 ```bash
-~/ModernDock/scripts/sway-integration.sh enable-autostart
+./scripts/run-tests.sh
+```
+
+The GTK smoke test runs only in a suitable Wayland session; it is skipped when the required session support is unavailable.
+
+### Start GlassDock
+
+Start the dock from inside your Wayland session:
+
+```bash
+glassdock &
+glassdock-settings
+```
+
+Useful commands:
+
+```bash
+glassdock-ctl status
+glassdock-ctl reload
+glassdock-ctl toggle
+glassdock-ctl quit
+```
+
+## Autostart
+
+The installer adds a login entry. By default, GlassDock only autostarts in sessions listed in **Settings → Behavior → Only auto-start in these sessions/WMs** (default: `sway`). You can change the list there; use `*` to allow every session.
+
+For compositors that do not run XDG autostart, add the relevant command to the compositor's startup configuration. For example:
+
+```ini
+# Hyprland
+exec-once = glassdock --autostart
+```
+
+```kdl
+// niri
+spawn-at-startup "glassdock" "--autostart"
+```
+
+For Sway, the helper can safely add or remove a managed autostart block in the Sway config. It creates a timestamped backup and validates the edited config before keeping the change:
+
+```bash
+./scripts/sway-integration.sh enable-autostart
 swaymsg reload
 ```
 
-This adds one marked `include` block to your Sway config (a timestamped backup is made first, the result is
-validated with `sway --validate`, and your original is restored automatically if Sway rejects it).
-Undo with `sway-integration.sh disable-autostart`.
+Undo it with `./scripts/sway-integration.sh disable-autostart`.
 
-## Using it
+## Using the dock
 
 | Action | Result |
-|---|---|
-| Click | Launch, or focus the app's window (click again to cycle its windows) |
-| Middle-click / Shift+click | Open a new window / instance |
-| Right-click | Window list, New Window, app actions, Keep in / Remove from Dock, Close All, Settings, Quit |
-| `moderndock-ctl toggle` | Show/hide (bind to a key; see below) |
-| `moderndock-ctl launch N` | Activate the Nth item |
+| --- | --- |
+| Click an item | Launch the app or focus its window; click again to cycle its windows |
+| Middle-click or Shift-click | Open a new window or instance |
+| Drag an icon | Reorder pinned items |
+| Right-click an item | Open the window list, app actions, pin/unpin controls, Settings, or Quit |
+| `glassdock-ctl toggle` | Show or hide the dock |
+| `glassdock-ctl launch N` | Activate the Nth dock item |
 
-Handy Sway keybindings (also written, commented out, to `~/.config/moderndock/sway.conf`):
+Example Sway keybindings:
 
+```ini
+bindsym $mod+Ctrl+d exec glassdock-ctl toggle
+bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1
 ```
-bindsym $mod+Ctrl+d exec moderndock-ctl toggle
-bindsym $mod+Ctrl+1 exec moderndock-ctl launch 1
-```
 
-`moderndock-ctl` commands: `ping`, `status`, `reload`, `toggle`, `show`, `hide`, `auto`, `launch N`, `quit`.
+GlassDock also writes commented example bindings to `~/.config/glassdock/sway.conf`.
 
 ## Configuration
 
-Settings are stored in `~/.config/moderndock/config.json` (validated and migrated on load; unknown or invalid
-values fall back to defaults). Edits made by the settings app apply live; hand edits are picked up automatically.
-Reset one setting or everything from the settings app.
+Settings are stored in `~/.config/glassdock/config.json`. The configuration is validated and migrated on load; unknown or invalid values fall back to defaults. Changes made in the Settings app apply live, and manual edits are picked up automatically.
+
+## Transparency and blur
+
+GlassDock draws a translucent surface. On **SwayFX**, the Background blur option requests a blur effect through `layer_effects`. Plain Sway does not provide that effect, so the dock remains translucent without background blur. To check support, run:
+
+```bash
+./scripts/sway-integration.sh check-blur
+```
+
+“macOS-inspired” and “Liquid Glass-inspired” refer to visual themes, not exact copies of another operating system's interface.
 
 ## Update
 
-Extract the new ZIP over a fresh `~/ModernDock` (keep a backup of the old folder), then re-run `./scripts/install.sh`.
-Your settings live in `~/.config/moderndock` and are unaffected.
+From the project directory, update the checkout and rerun the installer:
+
+```bash
+git pull --ff-only
+./install.sh
+```
+
+Your settings in `~/.config/glassdock` are kept separately from the project files.
 
 ## Uninstall
 
 ```bash
-~/ModernDock/scripts/uninstall.sh            # remove links, launcher, autostart; keeps your settings
-~/ModernDock/scripts/uninstall.sh --purge    # also remove settings (a .tar.gz backup is made first)
-rm -rf ~/ModernDock                          # the program folder itself is never deleted for you
+./scripts/uninstall.sh          # remove command links, launchers, and autostart; keep settings
+./scripts/uninstall.sh --purge  # also back up and remove settings
 ```
+
+The project directory is not deleted by the uninstaller; remove it yourself after uninstalling if you no longer need it.
 
 ## Troubleshooting
 
-| Symptom | Fix |
-|---|---|
-| `GtkLayerShell typelib not found` | `sudo dnf install gtk-layer-shell python3-gobject` (or `./scripts/install-deps.sh`) |
-| `This compositor does not support wlr-layer-shell` | Run inside Sway/SwayFX on Wayland. If `GDK_BACKEND=x11` is set, `unset GDK_BACKEND` |
-| Dock appears as a normal window / wrong place | The launcher preloads `libgtk-layer-shell` automatically; if you start `python3 -m moderndock.dock` yourself use `LD_PRELOAD=/usr/lib64/libgtk-layer-shell.so.0` |
-| `ModernDock is already running` | `moderndock-ctl quit`, then start again |
-| No running-app indicators | `moderndock-ctl status` must show `"sway_ipc": true`. Needs `SWAYSOCK` (start from inside Sway) |
-| Blur does nothing | You are on plain Sway; blur needs SwayFX (`sway-integration.sh check-blur`). After `swaymsg reload` run `moderndock-ctl reload` |
-| Icon is a coloured letter tile | The app's icon isn't in your icon theme; install an icon theme or set one in the desktop entry |
-| "Applications" button does nothing | Set *Applications button command* in Settings → Behavior (default `fuzzel`; install it or use e.g. `wmenu-run`) |
-| Dock hidden behind fullscreen app | Settings → Behavior → Stacking layer = Overlay, and turn off *Hide while fullscreen* |
-| Nothing at all | Run `moderndock` in a terminal; errors are printed there. Open an issue with the output and `moderndock-ctl status` |
+| Symptom | What to check |
+| --- | --- |
+| `GtkLayerShell typelib not found` | Run `./scripts/install-deps.sh`, or install `gtk-layer-shell` and PyGObject using your distribution's package manager. |
+| The dock opens as a normal window or appears in the wrong place | Start it from the Wayland session using the `glassdock` launcher; it handles loading `libgtk-layer-shell`. |
+| Running-app indicators are missing | Run `glassdock-ctl status` and check that `sway_ipc` is `true`. Start GlassDock inside Sway/SwayFX so `SWAYSOCK` is available. |
+| Background blur does nothing | Blur needs SwayFX. Check with `./scripts/sway-integration.sh check-blur`, then reload SwayFX and run `glassdock-ctl reload`. |
+| An icon appears as a colored letter tile | The app may not have an icon in your current icon theme; install an icon theme or set an icon in its desktop entry. |
+| The Applications button does nothing | Set **Applications button command** in Settings → Behavior. The default is `fuzzel`; install it or choose another launcher such as `wmenu-run`. |
+| The dock is hidden behind a fullscreen app | In Settings → Behavior, try **Stacking layer = Overlay** and disable **Hide while fullscreen**. |
+| Nothing appears | Run `glassdock` from a terminal and inspect its output, then collect `glassdock-ctl status` when opening an issue. |
 
-## Layout
+## Project layout
 
+```text
+assets/       GlassDock icon
+bin/          glassdock, glassdock-settings, glassdock-ctl launchers
+glassdock/    GTK dock, settings app, CLI, and core modules
+scripts/      dependency, build, install, uninstall, Sway integration, and test helpers
+tests/        unit tests, mock Sway IPC server, and GTK smoke test
 ```
-bin/        moderndock, moderndock-settings, moderndock-ctl (launchers)
-moderndock/ dock.py (GTK dock), settings.py (GTK settings), ctl.py
-  core/     config (schema, defaults, migration), themes, colors, desktop entries, sway IPC, model, control socket
-scripts/    install-deps, build, install, uninstall, sway-integration, run-tests
-tests/      unit tests (+ mock Sway IPC server), GTK smoke test
-assets/     icon
-```
+
+## Development notes
+
+GlassDock is Python and GTK 3 rather than a native-code application. The build helper byte-compiles the Python sources and checks runtime dependencies. The test suite covers configuration and migration, desktop entries, Sway IPC parsing, dock models and geometry, icons, and installation scripts. Actual rendering, layer-shell placement, and SwayFX blur should still be verified in your own Wayland session.
 
 ## License
 
-MIT, see `LICENSE`. Runtime dependencies are installed from Fedora, not bundled; see `THIRD_PARTY_NOTICES.md`.
+MIT. See [`LICENSE`](LICENSE). Runtime dependencies are provided by your distribution and are not bundled; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
