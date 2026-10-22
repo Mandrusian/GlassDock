@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#073b8c">
+  <meta name="theme-color" content="#071a43">
   <meta name="description" content="GlassDock is a customizable, liquid-glass-inspired dock for Wayland desktops, built for Sway and SwayFX.">
   <meta property="og:title" content="GlassDock — Your desktop, in flow">
   <meta property="og:description" content="A floating, customizable dock for Sway and SwayFX.">
@@ -11,11 +11,12 @@
   <meta property="og:image" content="assets/glassdock.svg">
   <title>GlassDock — Your desktop, in flow</title>
   <link rel="icon" href="assets/glassdock.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/liquid-glass/liquid-glass.css">
   <link rel="stylesheet" href="assets/site.css">
   <script src="assets/site.js" defer></script>
+  <script type="module" src="assets/liquid-glass-init.js"></script>
 </head>
 <body>
-  <a class="ribbon" href="https://github.com/Mandrusian/GlassDock" aria-label="Open GlassDock source on GitHub">Open source ↗</a>
   <div class="wrap">
     <header class="topbar">
       <a class="top-brand" href="#" aria-label="GlassDock home">
@@ -44,28 +45,26 @@
           <a class="button button-quiet" href="https://github.com/Mandrusian/GlassDock">Explore the source <span aria-hidden="true">↗</span></a>
         </div>
 
-        <div class="hero-visual" role="img" aria-label="Illustration of app icons resting on a translucent, luminous GlassDock">
-          <div class="visual-halo"></div>
-          <div class="visual-orb orb-a"></div>
-          <div class="visual-orb orb-b"></div>
-          <div class="desktop-plate">
-            <div class="plate-top"><span></span><span></span><span></span></div>
-            <div class="plate-label">Wayland · Sway / SwayFX</div>
+        <div class="hero-visual" role="img" aria-label="GlassDock running on a blue desktop, with app icons inside its long translucent dock">
+          <div class="desktop-backdrop">
+            <div class="backdrop-line line-a"></div>
+            <div class="backdrop-line line-b"></div>
+            <div class="backdrop-line line-c"></div>
           </div>
           <div class="dock-wrap">
-            <div class="dock-reflection"></div>
-            <div class="dock">
-              <div class="dock-app"><div class="app-icon icon-glass"><span>G</span></div><span class="app-caption">GlassDock</span><i class="dock-indicator"></i></div>
-              <div class="dock-app"><div class="app-icon icon-term"><span>›_</span></div><span class="app-caption">Terminal</span><i class="dock-indicator"></i></div>
-              <div class="dock-app"><div class="app-icon icon-folder"><span>▰</span></div><span class="app-caption">Files</span></div>
-              <div class="dock-app"><div class="app-icon icon-orbit"><span>◉</span></div><span class="app-caption">Explore</span><i class="dock-indicator"></i></div>
-              <div class="dock-app"><div class="app-icon icon-web"><span>◎</span></div><span class="app-caption">Browser</span><i class="dock-indicator"></i></div>
-              <div class="dock-app"><div class="app-icon icon-code"><span>&lt;/&gt;</span></div><span class="app-caption">Code</span><i class="dock-indicator"></i></div>
-              <div class="dock-app"><div class="app-icon icon-music"><span>♫</span></div><span class="app-caption">Music</span></div>
-              <div class="dock-app"><div class="app-icon icon-settings"><span>⌘</span></div><span class="app-caption">Settings</span></div>
+            <div class="dock liquid-glass">
+              <div class="dock-app app-grid" aria-label="Applications"><div class="app-icon icon-grid"><span class="grid-nine"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span></div><i class="dock-indicator"></i></div>
+              <div class="dock-app"><div class="app-icon icon-firefox"><span class="fox-orbit"></span></div><i class="dock-indicator"></i></div>
+              <div class="dock-app"><div class="app-icon icon-play"><span class="play-triangle"></span></div></div>
+              <div class="dock-app"><div class="app-icon icon-terminal"><span>&gt;_</span></div><i class="dock-indicator"></i></div>
+              <div class="dock-app"><div class="app-icon icon-files"><span class="folder-shape"></span><span class="folder-wave"></span></div></div>
+              <div class="dock-app"><div class="app-icon icon-crt"><span class="crt-word">CRT</span><span class="crt-bars"></span></div><i class="dock-indicator"></i></div>
+              <span class="dock-divider" aria-hidden="true"></span>
+              <div class="dock-app"><div class="app-icon icon-trash"><span class="trash-bin"></span></div></div>
+              <span class="dock-divider" aria-hidden="true"></span>
+              <div class="dock-app"><div class="app-icon icon-custom"><span>S</span></div><i class="dock-indicator"></i></div>
             </div>
           </div>
-          <div class="visual-caption">Translucent layers · subtle light · your favorite apps</div>
         </div>
       </section>
 
@@ -73,7 +72,7 @@
         <h2 class="section-title" id="install-title">A fresh dock is one command away.</h2>
         <p class="section-lede">Start with the guided setup. Keep it simple, or customize every corner.</p>
         <div class="glass-panel install-panel">
-          <div class="install-box">
+          <div class="install-box liquid-glass">
             <code id="install-command">curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash</code>
             <button class="copy-btn" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash" aria-label="Copy install command">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg>
@@ -142,35 +141,35 @@ bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
         <p class="section-lede">Choose a visual direction, then make the color, depth, borders, and details your own.</p>
         <div class="theme-grid">
           <article class="theme-card scene-smoky">
-            <div class="theme-scene"><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><span class="liquid-orb orb-three"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
+            <div class="theme-scene"><div class="scene-lines"></div><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><span class="liquid-orb orb-three"></span><div class="mini-glass-dock liquid-glass"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
             <div class="theme-copy"><strong>Smoky Glass</strong><span>Soft diffusion · quiet contrast</span></div>
           </article>
           <article class="theme-card scene-midnight">
-            <div class="theme-scene"><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-three"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app active">⌘</span><span class="mini-app">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
+            <div class="theme-scene"><div class="scene-lines"></div><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-three"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app active">⌘</span><span class="mini-app">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
             <div class="theme-copy"><strong>Dark</strong><span>Deep tint · bright specular rims</span></div>
           </article>
           <article class="theme-card scene-pearl">
-            <div class="theme-scene"><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
+            <div class="theme-scene"><div class="scene-lines"></div><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
             <div class="theme-copy"><strong>Light</strong><span>Milky glass · soft silver light</span></div>
           </article>
           <article class="theme-card scene-clear">
-            <div class="theme-scene"><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><span class="liquid-orb orb-three"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app active">⌘</span><span class="mini-app">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
+            <div class="theme-scene"><div class="scene-lines"></div><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><span class="liquid-orb orb-three"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app active">⌘</span><span class="mini-app">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
             <div class="theme-copy"><strong>Liquid Glass-inspired</strong><span>High translucency · refracted color</span></div>
           </article>
           <article class="theme-card scene-violet">
-            <div class="theme-scene"><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-three"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
+            <div class="theme-scene"><div class="scene-lines"></div><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-three"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
             <div class="theme-copy"><strong>Purple</strong><span>Cool lilac spill · polished depth</span></div>
           </article>
           <article class="theme-card scene-pink">
-            <div class="theme-scene"><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app active">⌘</span><span class="mini-app">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
+            <div class="theme-scene"><div class="scene-lines"></div><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app active">⌘</span><span class="mini-app">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
             <div class="theme-copy"><strong>Pink</strong><span>Soft vivid tint · glossy edges</span></div>
           </article>
           <article class="theme-card scene-macos">
-            <div class="theme-scene"><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app active">⌘</span><span class="mini-app">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
+            <div class="theme-scene"><div class="scene-lines"></div><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app active">⌘</span><span class="mini-app">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
             <div class="theme-copy"><strong>macOS-inspired</strong><span>Floating controls · gentle blur</span></div>
           </article>
           <article class="theme-card scene-custom">
-            <div class="theme-scene"><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><span class="liquid-orb orb-three"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
+            <div class="theme-scene"><div class="scene-lines"></div><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><span class="liquid-orb orb-three"></span><div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
             <div class="theme-copy"><strong>Custom</strong><span>Make the material your own</span></div>
           </article>
         </div>
