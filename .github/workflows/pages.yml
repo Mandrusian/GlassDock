@@ -7,8 +7,6 @@ on:
       - "index.html"
       - "assets/site.css"
       - "assets/site.js"
-      - "assets/liquid-glass-init.js"
-      - "assets/liquid-glass/**"
       - "assets/glassdock.svg"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
@@ -45,8 +43,7 @@ jobs:
         run: |
           mkdir -p _site/assets
           cp index.html _site/index.html
-          cp assets/site.css assets/site.js assets/liquid-glass-init.js assets/glassdock.svg _site/assets/
-          cp -R assets/liquid-glass _site/assets/
+          cp assets/site.css assets/site.js assets/glassdock.svg _site/assets/
           touch _site/.nojekyll
 
       - name: Upload website artifact
