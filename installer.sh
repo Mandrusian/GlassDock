@@ -28,23 +28,39 @@ has_moderndock() {
  [ -d "$CONF/moderndock" ] || [ -d "$HOME/ModernDock" ] ||
  pgrep -u "$(id -u)" -f 'moderndock\.' >/dev/null 2>&1
 }
+has_glassicon() {
+ [ -e "$BIN/glassicon" ] || [ -L "$BIN/glassicon" ] ||
+ [ -e "$APP/glassicon.desktop" ]
+}
+
 menu() {
  printf '\n\033[1;37m  GlassDock Setup\033[0m\n  ────────────────────────────────────\n'
  if has_moderndock; then warn "ModernDock detected — install will migrate it to GlassDock."
  elif has_glassdock; then info "Existing GlassDock installation detected."
- else printf 'A floating glass-style dock for Wayland.\n'; fi
+ else printf 'A floating dock and icon tools for Wayland.\n'; fi
+ if has_glassicon; then info "GlassIcon Studio installation detected."; fi
  if command -v whiptail >/dev/null 2>&1 && [ -r /dev/tty ] && [ -w /dev/tty ]; then
-  CHOICE="$(whiptail --title 'GlassDock Setup' --menu 'Choose an action' 16 62 3 install 'Install / Upgrade GlassDock' uninstall 'Uninstall GlassDock / ModernDock' quit 'Exit without changes' </dev/tty 3>&1 1>&2 2>&3)" || CHOICE=quit
+  CHOICE="$(whiptail --title 'GlassDock Setup' --menu 'Choose an action' 18 68 5 \
+    install 'Install / Upgrade GlassDock' \
+    glassicon 'Install / Upgrade GlassIcon Studio' \
+    uninstall 'Uninstall GlassDock / ModernDock' \
+    uninstall-glassicon 'Uninstall GlassIcon Studio' \
+    quit 'Exit without changes' </dev/tty 3>&1 1>&2 2>&3)" || CHOICE=quit
  elif command -v dialog >/dev/null 2>&1 && [ -r /dev/tty ] && [ -w /dev/tty ]; then
-  CHOICE="$(dialog --title 'GlassDock Setup' --menu 'Choose an action' 16 62 3 install 'Install / Upgrade GlassDock' uninstall 'Uninstall GlassDock / ModernDock' quit 'Exit without changes' </dev/tty 3>&1 1>&2 2>&3)" || CHOICE=quit
+  CHOICE="$(dialog --title 'GlassDock Setup' --menu 'Choose an action' 18 68 5 \
+    install 'Install / Upgrade GlassDock' \
+    glassicon 'Install / Upgrade GlassIcon Studio' \
+    uninstall 'Uninstall GlassDock / ModernDock' \
+    uninstall-glassicon 'Uninstall GlassIcon Studio' \
+    quit 'Exit without changes' </dev/tty 3>&1 1>&2 2>&3)" || CHOICE=quit
  elif [ -r /dev/tty ] && [ -w /dev/tty ]; then
-  printf '\n  1) Install / Upgrade GlassDock\n  2) Uninstall GlassDock / ModernDock\n  3) Exit\n'
-  read -r -p 'Choose [1-3]: ' a </dev/tty
-  case "$a" in 1) CHOICE=install;; 2) CHOICE=uninstall;; *) CHOICE=quit;; esac
+  printf '\n  1) Install / Upgrade GlassDock\n  2) Install / Upgrade GlassIcon Studio\n  3) Uninstall GlassDock / ModernDock\n  4) Uninstall GlassIcon Studio\n  5) Exit\n'
+  read -r -p 'Choose [1-5]: ' a </dev/tty
+  case "$a" in 1) CHOICE=install;; 2) CHOICE=glassicon;; 3) CHOICE=uninstall;; 4) CHOICE=uninstall-glassicon;; *) CHOICE=quit;; esac
  else
   CHOICE="${GLASSDOCK_ACTION:-}"
-  case "$CHOICE" in install|uninstall|quit) warn "No terminal attached; using GLASSDOCK_ACTION=$CHOICE";;
-   *) die "No interactive terminal was found. Run this from a terminal, or set GLASSDOCK_ACTION=install|uninstall explicitly.";;
+  case "$CHOICE" in install|glassicon|uninstall|uninstall-glassicon|quit) warn "No terminal attached; using GLASSDOCK_ACTION=$CHOICE";;
+   *) die "No interactive terminal was found. Run this from a terminal, or set GLASSDOCK_ACTION=install|glassicon|uninstall|uninstall-glassicon explicitly.";;
   esac
  fi
 }
@@ -97,6 +113,40 @@ install_dock() {
  ok "GlassDock installed in $root."
  printf '\nStart:    glassdock &\nSettings: glassdock-settings\nStatus:   glassdock-ctl status\n'
 }
+install_glassicon() {
+ fetch_source
+ local root="$DEST/extras/GlassIcon"
+ [ -x "$root/install.sh" ] || die "GlassIcon Studio was not found at $root/install.sh in the downloaded checkout."
+ printf '\nGlassIcon Studio manages icon themes, launcher icons, and user-level file-manager icons.\n'
+ local deps=n
+ if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  read -r -p 'Install GlassIcon system dependencies too? (may use sudo) [y/N]: ' deps </dev/tty
+ else
+  deps="${GLASSDOCK_INSTALL_DEPS:-n}"
+ fi
+ if [[ "$deps" =~ ^[Yy]$ ]]; then "$root/install.sh" --deps; else "$root/install.sh"; fi
+ ok "GlassIcon Studio installed."
+ printf '\nLaunch: glassicon\nSettings and backups stay in your user directories.\n'
+}
+uninstall_glassicon() {
+ local linked_root=""
+ if [ -L "$BIN/glassicon" ]; then
+  local resolved
+  resolved="$(readlink -f -- "$BIN/glassicon" 2>/dev/null || true)"
+  case "$resolved" in */extras/GlassIcon/bin/glassicon) linked_root="${resolved%/bin/glassicon}";; esac
+ fi
+ if [ -n "$linked_root" ] && [ -x "$linked_root/uninstall.sh" ]; then
+  "$linked_root/uninstall.sh"
+  ok "GlassIcon Studio launcher removed; settings and icon overrides were preserved."
+  return
+ fi
+ fetch_source
+ local root="$DEST/extras/GlassIcon"
+ [ -x "$root/uninstall.sh" ] || die "GlassIcon uninstaller was not found at $root/uninstall.sh."
+ "$root/uninstall.sh"
+ ok "GlassIcon Studio launcher removed; settings and icon overrides were preserved."
+}
+
 uninstall_dock() {
  if ! has_glassdock && ! has_moderndock; then warn "No obvious installation detected."; fi
  printf '\nThis removes known command links and launchers; project folders are not deleted.\n'
@@ -126,4 +176,10 @@ uninstall_dock() {
  ok "Cleanup complete. Project directories were preserved."
 }
 menu
-case "$CHOICE" in install) install_dock;; uninstall) uninstall_dock;; *) printf 'No changes made.\n';; esac
+case "$CHOICE" in
+ install) install_dock;;
+ glassicon) install_glassicon;;
+ uninstall) uninstall_dock;;
+ uninstall-glassicon) uninstall_glassicon;;
+ *) printf 'No changes made.\n';;
+esac
