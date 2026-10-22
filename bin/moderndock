@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# ModernDock launcher: runs the project in place (no system-wide install).
+ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+
+# gtk-layer-shell must be loaded before libwayland-client when used from Python,
+# otherwise the dock may open as an ordinary window instead of a layer surface.
+# Preloading it is the documented fix. The dock strips it again from the
+# environment of every app it launches (MODERNDOCK_PRELOAD marks our copy).
+# Set MODERNDOCK_NO_PRELOAD=1 to disable.
+if [ -z "${MODERNDOCK_NO_PRELOAD:-}" ]; then
+    lib=""
+    for d in /usr/lib64 /usr/lib /usr/lib/aarch64-linux-gnu /usr/lib/x86_64-linux-gnu; do
+        if [ -e "$d/libgtk-layer-shell.so.0" ]; then lib="$d/libgtk-layer-shell.so.0"; break; fi
+    done
+    if [ -z "$lib" ]; then
+        lib="$( (/sbin/ldconfig -p 2>/dev/null || ldconfig -p 2>/dev/null) | awk '/libgtk-layer-shell\.so\.0 /{print $NF; exit}')"
+    fi
+    if [ -n "$lib" ]; then
+        export MODERNDOCK_PRELOAD="$lib"
+        export LD_PRELOAD="$lib${LD_PRELOAD:+:$LD_PRELOAD}"
+    fi
+fi
+exec python3 -m moderndock.dock "$@"
