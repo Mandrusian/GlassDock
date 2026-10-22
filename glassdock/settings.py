@@ -4,6 +4,8 @@
 One control is generated for every entry of config.SCHEMA, so a visible
 setting always maps to a real, validated, dock-consumed option. Changes are
 saved (debounced) and pushed to the running dock over its control socket.
+
+Layout: a grouped sidebar, a pinned live dock preview, and card-style pages.
 """
 import json
 import math
@@ -32,6 +34,97 @@ from .core.themes import CUSTOM, THEMES, theme_label  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 CONTROL_TYPES = ("bool", "int", "float", "choice", "color", "text")  # types make_control supports
+
+CATEGORY_BLURBS = {
+    "style": "Colors, borders, shadow and glass effects.",
+    "size": "How big the dock and its icons are.",
+    "animation": "Magnification, motion and timing.",
+    "indicators": "How running and focused apps are marked.",
+    "position": "Which edge the dock lives on.",
+    "behavior": "Auto-hide, stacking and commands.",
+}
+
+# page name -> (sidebar icon fallbacks)
+PAGE_ICONS = {
+    "themes": ("applications-graphics-symbolic", "preferences-desktop-theme-symbolic"),
+    "style": ("preferences-color-symbolic", "color-select-symbolic"),
+    "size": ("view-fullscreen-symbolic", "zoom-fit-best-symbolic"),
+    "animation": ("media-playback-start-symbolic", "view-refresh-symbolic"),
+    "indicators": ("media-record-symbolic", "emblem-ok-symbolic"),
+    "position": ("go-bottom-symbolic", "view-pin-symbolic"),
+    "behavior": ("preferences-system-symbolic", "emblem-system-symbolic"),
+    "launchers": ("view-app-grid-symbolic", "view-list-symbolic"),
+    "monitors": ("video-display-symbolic", "computer-symbolic"),
+    "status": ("utilities-system-monitor-symbolic", "dialog-information-symbolic"),
+}
+
+PREVIEW_PAGES = {"style", "size", "indicators", "position"}
+
+CSS = b"""
+.md-sidebar { background: alpha(@theme_fg_color, 0.04); border-right: 1px solid alpha(@theme_fg_color, 0.14); }
+.md-sidebar row { margin: 1px 8px; padding: 0; border-radius: 8px; }
+.md-sidebar row:hover { background: alpha(@theme_fg_color, 0.07); }
+.md-sidebar row:selected, .md-sidebar row:selected:hover { background: @theme_selected_bg_color; }
+.md-sidebar row:selected label, .md-sidebar row:selected image { color: @theme_selected_fg_color; }
+.md-sidebar row.md-section, .md-sidebar row.md-section:hover { background: none; margin-top: 10px; }
+.md-section-label { font-size: 10px; font-weight: 700; letter-spacing: 1px; opacity: 0.55; }
+.md-sidebar-icon { opacity: 0.8; }
+.md-search { margin: 10px 8px 4px 8px; }
+
+.md-content { background: @theme_bg_color; }
+.md-page-title { font-size: 22px; font-weight: 700; }
+.md-page-sub { opacity: 0.65; }
+.md-group-title { font-size: 11px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.6; }
+
+.md-card { background: @theme_base_color; border: 1px solid alpha(@theme_fg_color, 0.16); border-radius: 12px; }
+list.md-list { background: transparent; border-radius: 12px; }
+list.md-list row { background: transparent; border-bottom: 1px solid alpha(@theme_fg_color, 0.11); padding: 0; }
+list.md-list row:last-child { border-bottom: none; }
+list.md-list row:hover { background: transparent; }
+.md-row-title { font-weight: 500; }
+.md-row-help { font-size: 12px; opacity: 0.6; }
+.md-dependent { padding-left: 22px; }
+.md-value { font-feature-settings: "tnum"; opacity: 0.75; min-width: 56px; }
+.md-hex { font-family: monospace; font-size: 12px; opacity: 0.6; }
+.md-reset { opacity: 0.55; min-width: 28px; min-height: 28px; padding: 0; border-radius: 14px; }
+.md-reset:hover { opacity: 1; }
+.md-reset:disabled { opacity: 0.18; }
+
+.md-preview { background: transparent; border-radius: 14px; border: 1px solid alpha(@theme_fg_color, 0.16); }
+.md-preview-caption { font-size: 11px; opacity: 0.55; }
+
+button.md-theme-card { padding: 8px; border-radius: 14px; background: @theme_base_color;
+                       border: 1px solid alpha(@theme_fg_color, 0.16); box-shadow: none; }
+button.md-theme-card:hover { background: mix(@theme_base_color, @theme_fg_color, 0.05); }
+button.md-theme-card.active { border-color: @theme_selected_bg_color; box-shadow: 0 0 0 2px @theme_selected_bg_color; }
+.md-theme-name { font-weight: 600; }
+.md-theme-desc { font-size: 12px; opacity: 0.6; }
+.md-active-pill { background: @theme_selected_bg_color; color: @theme_selected_fg_color;
+                  border-radius: 99px; padding: 0 8px; font-size: 10px; font-weight: 700; }
+
+.md-pill { border-radius: 99px; padding: 2px 10px; font-size: 12px; background: alpha(@theme_fg_color, 0.08); }
+.md-badge { border-radius: 99px; padding: 2px 10px; font-size: 12px; font-weight: 600; }
+.md-badge.ok { background: rgba(46, 194, 126, 0.18); color: #1a8d56; }
+.md-badge.off { background: rgba(229, 165, 10, 0.2); color: #a8740a; }
+.md-badge.bad { background: rgba(224, 27, 36, 0.16); color: #c01c28; }
+.md-key { opacity: 0.6; }
+.md-mono { font-family: monospace; font-size: 12px; }
+
+.md-toolbar button { padding: 4px 10px; }
+.md-empty { opacity: 0.55; padding: 28px; }
+"""
+
+
+def install_css():
+    provider = Gtk.CssProvider()
+    try:
+        provider.load_from_data(CSS)
+    except GLib.Error as exc:  # never let styling stop the app from opening
+        print("settings: stylesheet rejected: %s" % exc, file=sys.stderr)
+        return
+    screen = Gdk.Screen.get_default()
+    if screen is not None:
+        Gtk.StyleContext.add_provider_for_screen(screen, provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
 
 
 # --------------------------------------------------------------------- store
@@ -203,21 +296,30 @@ def make_control(setting, value, on_change):
 
     if t in ("int", "float"):
         digits = 0 if t == "int" else (2 if (setting.step or 1) < 0.1 else 1)
-        w = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, setting.min, setting.max, setting.step or 1)
-        w.set_digits(digits)
-        w.set_value(float(value))
-        w.set_draw_value(True)
-        w.set_value_pos(Gtk.PositionType.RIGHT)
-        w.set_size_request(280, -1)
         unit = (" " + setting.unit) if setting.unit else ""
-        w.connect("format-value", lambda s, v: ("%.*f" % (digits, v)) + unit)
-        w.connect("value-changed", guarded(lambda *_: on_change(w.get_value())))
+        box = Gtk.Box(spacing=10)
+        scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, setting.min, setting.max, setting.step or 1)
+        scale.set_digits(digits)
+        scale.set_draw_value(False)
+        scale.set_size_request(220, -1)
+        scale.set_valign(Gtk.Align.CENTER)
+        scale.set_value(float(value))
+        readout = Gtk.Label(xalign=1)
+        readout.get_style_context().add_class("md-value")
+
+        def show(v):
+            readout.set_text(("%.*f" % (digits, v)) + unit)
+        show(float(value))
+        scale.connect("value-changed", guarded(lambda *_: (show(scale.get_value()), on_change(scale.get_value()))))
+        box.pack_start(scale, False, False, 0)
+        box.pack_start(readout, False, False, 0)
 
         def setv(v):
             busy["v"] = True
-            w.set_value(float(v))
+            scale.set_value(float(v))
+            show(float(v))
             busy["v"] = False
-        return w, setv
+        return box, setv
 
     if t == "choice":
         w = Gtk.ComboBoxText()
@@ -234,39 +336,48 @@ def make_control(setting, value, on_change):
         return w, setv
 
     if t == "color":
+        box = Gtk.Box(spacing=8)
         w = Gtk.ColorButton()
         w.set_use_alpha(False)
+        w.set_valign(Gtk.Align.CENTER)
+        hexlbl = Gtk.Label(label=str(value).upper())
+        hexlbl.get_style_context().add_class("md-hex")
         rgba = Gdk.RGBA()
         rgba.parse(str(value))
         w.set_rgba(rgba)
-        w.set_valign(Gtk.Align.CENTER)
 
         def picked(*_):
             try:
-                on_change(normalize_color(w.get_rgba().to_string()))
+                v = normalize_color(w.get_rgba().to_string())
             except ValueError:
-                pass
+                return
+            hexlbl.set_text(v.upper())
+            on_change(v)
         w.connect("color-set", guarded(picked))
+        box.pack_start(hexlbl, False, False, 0)
+        box.pack_start(w, False, False, 0)
 
         def setv(v):
             busy["v"] = True
             r = Gdk.RGBA()
             r.parse(str(v))
             w.set_rgba(r)
+            hexlbl.set_text(str(v).upper())
             busy["v"] = False
-        return w, setv
+        return box, setv
 
     if t == "text":
         w = Gtk.Entry()
-        w.set_width_chars(22)
+        w.set_width_chars(20)
         w.set_text(str(value))
         w.set_valign(Gtk.Align.CENTER)
         w.connect("changed", guarded(lambda *_: on_change(w.get_text())))
 
         def setv(v):
-            busy["v"] = True
-            w.set_text(str(v))
-            busy["v"] = False
+            if w.get_text() != str(v):  # don't move the caret while typing
+                busy["v"] = True
+                w.set_text(str(v))
+                busy["v"] = False
         return w, setv
 
     raise ValueError("no control for setting type %r" % t)
@@ -280,31 +391,47 @@ def depends_met(setting, store):
     return cur in req if isinstance(req, tuple) else cur == req
 
 
+def style(widget, *classes):
+    ctx = widget.get_style_context()
+    for c in classes:
+        ctx.add_class(c)
+    return widget
+
+
+def label(text, *classes, xalign=0.0, wrap=False, selectable=False):
+    lbl = Gtk.Label(label=text, xalign=xalign)
+    lbl.set_line_wrap(wrap)
+    lbl.set_selectable(selectable)
+    return style(lbl, *classes)
+
+
 class SettingRow(Gtk.Box):
     def __init__(self, setting, store):
-        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=14)
         self.setting, self.store = setting, store
-        self.set_margin_start(16)
-        self.set_margin_end(16)
-        self.set_margin_top(6)
-        self.set_margin_bottom(6)
+        for side in ("start", "end"):
+            getattr(self, "set_margin_" + side)(16)
+        self.set_margin_top(10)
+        self.set_margin_bottom(10)
         left = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-        title = Gtk.Label(label=setting.label, xalign=0)
-        left.pack_start(title, False, False, 0)
+        left.set_valign(Gtk.Align.CENTER)
+        left.pack_start(label(setting.label, "md-row-title"), False, False, 0)
         if setting.help:
-            h = Gtk.Label(label=setting.help, xalign=0)
-            h.set_line_wrap(True)
-            h.set_max_width_chars(48)
-            h.get_style_context().add_class("dim-label")
+            h = label(setting.help, "md-row-help", wrap=True)
+            h.set_max_width_chars(52)
             left.pack_start(h, False, False, 0)
+        if setting.depends:
+            style(left, "md-dependent")
         self.pack_start(left, True, True, 0)
         self.control, self._setv = make_control(setting, store.get(setting.key),
                                                 lambda v: store.set(setting.key, v))
+        self.control.set_valign(Gtk.Align.CENTER)
         self.pack_start(self.control, False, False, 0)
         self.reset_btn = Gtk.Button.new_from_icon_name("edit-undo-symbolic", Gtk.IconSize.BUTTON)
         self.reset_btn.set_relief(Gtk.ReliefStyle.NONE)
         self.reset_btn.set_tooltip_text("Reset to default")
         self.reset_btn.set_valign(Gtk.Align.CENTER)
+        style(self.reset_btn, "md-reset")
         self.reset_btn.connect("clicked", lambda *_: store.reset(setting.key))
         self.pack_start(self.reset_btn, False, False, 0)
         self.refresh()
@@ -316,6 +443,8 @@ class SettingRow(Gtk.Box):
         self.set_sensitive(depends_met(self.setting, self.store))
 
 
+# ------------------------------------------------------------------ layout bits
+
 def scrolled(child):
     sw = Gtk.ScrolledWindow()
     sw.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
@@ -325,78 +454,218 @@ def scrolled(child):
 
 def page_box():
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
-    box.set_margin_top(8)
-    box.set_margin_bottom(16)
+    for side in ("start", "end"):
+        getattr(box, "set_margin_" + side)(28)
+    box.set_margin_top(22)
+    box.set_margin_bottom(28)
     return box
 
 
 def heading(text, sub=None):
-    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
-    box.set_margin_start(16)
-    box.set_margin_end(16)
-    box.set_margin_top(10)
-    box.set_margin_bottom(8)
-    lbl = Gtk.Label(xalign=0)
-    lbl.set_markup("<span size='large' weight='bold'>%s</span>" % GLib.markup_escape_text(text))
-    box.pack_start(lbl, False, False, 0)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+    box.set_margin_bottom(16)
+    box.pack_start(label(text, "md-page-title"), False, False, 0)
     if sub:
-        s = Gtk.Label(label=sub, xalign=0)
-        s.set_line_wrap(True)
-        s.get_style_context().add_class("dim-label")
-        box.pack_start(s, False, False, 0)
+        box.pack_start(label(sub, "md-page-sub", wrap=True), False, False, 0)
     return box
 
 
-# --------------------------------------------------------------- theme cards
+def group_title(text):
+    lbl = label(text.upper(), "md-group-title")
+    lbl.set_margin_top(18)
+    lbl.set_margin_bottom(6)
+    lbl.set_margin_start(4)
+    return lbl
 
-def draw_theme_preview(cr, w, h, get):
-    """Mini dock preview. `get(key)` returns a value for a theme key."""
-    pat = cairo.LinearGradient(0, 0, w, h)
-    pat.add_color_stop_rgb(0, 0.10, 0.18, 0.30)
-    pat.add_color_stop_rgb(1, 0.45, 0.22, 0.50)
-    cr.set_source(pat)
+
+def card(child=None):
+    frame = style(Gtk.Box(orientation=Gtk.Orientation.VERTICAL), "md-card")
+    if child is not None:
+        frame.pack_start(child, True, True, 0)
+    return frame
+
+
+def settings_list():
+    lb = style(Gtk.ListBox(), "md-list")
+    lb.set_selection_mode(Gtk.SelectionMode.NONE)
+    lb.set_activate_on_single_click(False)
+    return lb
+
+
+def row_in_list(lb, widget):
+    """Add widget to a ListBox as a non-focusable, non-selectable row."""
+    lb.add(widget)
+    parent = widget.get_parent()
+    if isinstance(parent, Gtk.ListBoxRow):
+        parent.set_activatable(False)
+        parent.set_selectable(False)
+        parent.set_can_focus(False)
+
+
+def icon_image(names, size=Gtk.IconSize.MENU):
+    img = Gtk.Image.new_from_gicon(Gio.ThemedIcon.new_from_names(list(names) + ["image-missing"]), size)
+    return style(img, "md-sidebar-icon")
+
+
+def icon_button(icon, tip, cb):
+    b = Gtk.Button.new_from_icon_name(icon, Gtk.IconSize.BUTTON)
+    b.set_tooltip_text(tip)
+    b.connect("clicked", cb)
+    return b
+
+
+def text_button(text, cb, suggested=False):
+    b = Gtk.Button(label=text)
+    b.connect("clicked", cb)
+    if suggested:
+        style(b, "suggested-action")
+    return b
+
+
+# --------------------------------------------------------------- dock preview
+
+def _rounded(cr, x, y, w, h, r):
+    r = max(0.0, min(r, w / 2.0, h / 2.0))
+    cr.new_sub_path()
+    cr.arc(x + w - r, y + r, r, -math.pi / 2, 0)
+    cr.arc(x + w - r, y + h - r, r, 0, math.pi / 2)
+    cr.arc(x + r, y + h - r, r, math.pi / 2, math.pi)
+    cr.arc(x + r, y + r, r, math.pi, 1.5 * math.pi)
+    cr.close_path()
+
+
+APP_HUES = [(0.95, 0.45, 0.30), (0.30, 0.75, 0.45), (0.30, 0.55, 0.95), (0.95, 0.75, 0.25), (0.70, 0.40, 0.90)]
+
+
+def draw_dock_preview(cr, w, h, get, compact=False):
+    """Draw a miniature dock. `get(key)` returns a value for a setting key.
+
+    compact=True draws a fixed bottom-centered thumbnail (theme cards);
+    otherwise edge, alignment, icon size, spacing, padding and margin are honoured.
+    """
+    wall = cairo.LinearGradient(0, 0, w, h)
+    wall.add_color_stop_rgb(0, 0.10, 0.18, 0.30)
+    wall.add_color_stop_rgb(0.55, 0.30, 0.20, 0.48)
+    wall.add_color_stop_rgb(1, 0.62, 0.30, 0.48)
+    cr.set_source(wall)
     cr.paint()
-    dw, dh = w * 0.78, h * 0.34
-    x, y = (w - dw) / 2, h - dh - h * 0.14
-    r = min(get("appearance.corner_radius") * 0.45, dh / 2)
+
+    n = 5
+    edge, align = ("bottom", "center") if compact else (get("position.edge"), get("position.alignment"))
+    vertical = edge in ("left", "right")
+    icon, gap, pad, margin = (get("size.icon_size"), get("size.spacing"), get("size.padding"),
+                              get("size.margin")) if not compact else (52, 8, 10, 10)
+    run = 2 * pad + n * icon + (n - 1) * gap          # length along the edge
+    thick = icon + 2 * pad                              # depth away from the edge
+    along, across = (h, w) if vertical else (w, h)
+    k = min(1.0, along * 0.84 / run, across * 0.60 / thick)
+    if compact:
+        k = min(along * 0.78 / run, across * 0.42 / thick)
+    run, thick, icon, gap, pad, margin = (v * k for v in (run, thick, icon, gap, pad, margin))
+    margin = max(margin, 4)
+    start = {"start": along * 0.06, "center": (along - run) / 2.0, "end": along - run - along * 0.06}[align]
+    if vertical:
+        dw, dh = thick, run
+        dx = margin if edge == "left" else w - thick - margin
+        dy = start
+    else:
+        dw, dh = run, thick
+        dx = start
+        dy = margin if edge == "top" else h - thick - margin
+    radius = get("appearance.corner_radius") * k
+
+    if get("appearance.shadow"):
+        size = get("appearance.shadow_size") * k
+        strength = get("appearance.shadow_opacity")
+        for i in range(6):
+            grow = size * (1 - i / 6.0)
+            _rounded(cr, dx - grow / 2, dy - grow / 2 + size * 0.25, dw + grow, dh + grow, radius + grow / 2)
+            cr.set_source_rgba(0, 0, 0, strength * 0.10)
+            cr.fill()
+
     op = get("appearance.bg_opacity")
-
-    def path(px, py, pw, ph, rad):
-        cr.new_sub_path()
-        cr.arc(px + pw - rad, py + rad, rad, -math.pi / 2, 0)
-        cr.arc(px + pw - rad, py + ph - rad, rad, 0, math.pi / 2)
-        cr.arc(px + rad, py + ph - rad, rad, math.pi / 2, math.pi)
-        cr.arc(px + rad, py + rad, rad, math.pi, 1.5 * math.pi)
-        cr.close_path()
-
-    path(x, y, dw, dh, r)
+    _rounded(cr, dx, dy, dw, dh, radius)
     c1 = with_alpha(parse_color(get("appearance.bg_color")), op)
     if get("appearance.bg_gradient"):
         c2 = with_alpha(parse_color(get("appearance.bg_color2")), op)
         d = get("appearance.gradient_direction")
-        g = cairo.LinearGradient(x, y, x + (dw if d != "vertical" else 0), y + (dh if d != "horizontal" else 0))
+        g = cairo.LinearGradient(dx, dy, dx + (dw if d != "vertical" else 0), dy + (dh if d != "horizontal" else 0))
         g.add_color_stop_rgba(0, *c1)
         g.add_color_stop_rgba(1, *c2)
         cr.set_source(g)
     else:
         cr.set_source_rgba(*c1)
     cr.fill_preserve()
-    cr.set_source_rgba(*with_alpha(parse_color(get("appearance.border_color")), get("appearance.border_opacity")))
-    cr.set_line_width(max(0.5, get("appearance.border_width")))
-    cr.stroke()
-    n, size = 5, dh * 0.58
-    gap = (dw - n * size) / (n + 1)
-    hues = [(0.95, 0.45, 0.30), (0.30, 0.75, 0.45), (0.30, 0.55, 0.95), (0.95, 0.75, 0.25), (0.70, 0.40, 0.90)]
-    for i in range(n):
-        ix = x + gap + i * (size + gap)
-        path(ix, y + (dh - size) / 2 - 1, size, size, size * 0.24)
-        cr.set_source_rgb(*hues[i])
-        cr.fill()
-    ind = parse_color(get("indicators.color"))
-    cr.set_source_rgba(*ind)
-    cr.arc(x + gap + 2 * (size + gap) + size / 2, y + dh - 4, 1.6, 0, 2 * math.pi)
-    cr.fill()
+    bw = get("appearance.border_width")
+    if bw > 0:
+        cr.set_source_rgba(*with_alpha(parse_color(get("appearance.border_color")), get("appearance.border_opacity")))
+        cr.set_line_width(max(0.5, bw * max(k, 0.6)))
+        cr.stroke()
+    else:
+        cr.new_path()
 
+    ind_style = "dot" if compact else get("indicators.style")
+    ind_size = max(1.5, (4 if compact else get("indicators.size")) * max(k, 0.6) / 2.0)
+    for i in range(n):
+        off = pad + i * (icon + gap)
+        ix, iy = (dx + pad, dy + off) if vertical else (dx + off, dy + pad)
+        _rounded(cr, ix, iy, icon, icon, icon * 0.24)
+        cr.set_source_rgb(*APP_HUES[i])
+        cr.fill()
+        running = i in (1, 2)
+        if ind_style == "none" or not running:
+            continue
+        col = get("indicators.active_color") if i == 1 else get("indicators.color")
+        cr.set_source_rgba(*parse_color(col))
+        # indicator sits on the side of the icon that faces the screen edge
+        gapspace = max(pad * 0.55, ind_size + 1)
+        if vertical:
+            cx = (dx + gapspace * 0.5) if edge == "left" else (dx + dw - gapspace * 0.5)
+            cy = iy + icon / 2
+            if ind_style == "line":
+                cr.rectangle(cx - ind_size / 2, cy - icon * 0.2, ind_size, icon * 0.4)
+            else:
+                cr.arc(cx, cy, ind_size, 0, 2 * math.pi)
+        else:
+            cx = ix + icon / 2
+            cy = (dy + dh - gapspace * 0.5) if edge != "top" else (dy + gapspace * 0.5)
+            if ind_style == "line":
+                cr.rectangle(cx - icon * 0.2, cy - ind_size / 2, icon * 0.4, ind_size)
+            else:
+                cr.arc(cx, cy, ind_size, 0, 2 * math.pi)
+        cr.fill()
+
+
+class LivePreview(Gtk.Box):
+    """Pinned, always-current preview of the dock built from the working config."""
+
+    def __init__(self, store):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        self.store = store
+        self.set_margin_start(28)
+        self.set_margin_end(28)
+        self.set_margin_top(18)
+        self.area = style(Gtk.DrawingArea(), "md-preview")
+        self.area.set_size_request(-1, 150)
+        self.area.connect("draw", self.on_draw)
+        self.pack_start(self.area, False, False, 0)
+        self.pack_start(label("Live preview · scaled to fit, approximate", "md-preview-caption"), False, False, 0)
+        store.listen(self.area.queue_draw)
+
+    def on_draw(self, area, cr):
+        w, h = area.get_allocated_width(), area.get_allocated_height()
+        cr.save()
+        _rounded(cr, 0, 0, w, h, 14)
+        cr.clip()
+        try:
+            draw_dock_preview(cr, w, h, self.store.get)
+        except Exception as exc:  # a bad value must never take the window down
+            print("preview: %s" % exc, file=sys.stderr)
+        cr.restore()
+        return False
+
+
+# --------------------------------------------------------------- theme cards
 
 class ThemesPage(Gtk.Box):
     def __init__(self, store):
@@ -407,62 +676,76 @@ class ThemesPage(Gtk.Box):
         self.flow = Gtk.FlowBox()
         self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
         self.flow.set_max_children_per_line(3)
-        self.flow.set_margin_start(12)
-        self.flow.set_margin_end(12)
+        self.flow.set_min_children_per_line(1)
         self.flow.set_homogeneous(True)
-        self.flow.set_row_spacing(10)
-        self.flow.set_column_spacing(10)
-        self.buttons = {}
+        self.flow.set_row_spacing(12)
+        self.flow.set_column_spacing(12)
+        self.cards = {}
         for name in list(THEMES) + [CUSTOM]:
-            self.flow.add(self.card(name))
+            self.flow.add(self.make_card(name))
         self.pack_start(self.flow, False, False, 0)
-        note = Gtk.Label(xalign=0)
-        note.set_markup("<small>“Inspired” themes are visual homages. True background blur needs SwayFX "
-                        "(Colors &amp; Style → Background blur); on plain Sway the dock is translucent only.</small>")
-        note.set_line_wrap(True)
-        note.set_margin_start(16)
-        note.set_margin_end(16)
-        note.set_margin_top(12)
+        note = label("“Inspired” themes are visual homages, not copies. True background blur needs SwayFX "
+                     "(Colors & Style → Background blur); on plain Sway the dock is translucent only.",
+                     "md-page-sub", wrap=True)
+        note.set_margin_top(18)
         self.pack_start(note, False, False, 0)
         store.listen(self.refresh)
         self.refresh()
 
-    def card(self, name):
-        btn = Gtk.Button()
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+    def make_card(self, name):
+        btn = style(Gtk.Button(), "md-theme-card")
+        btn.set_relief(Gtk.ReliefStyle.NONE)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         area = Gtk.DrawingArea()
-        area.set_size_request(210, 92)
+        area.set_size_request(200, 96)
         if name == CUSTOM:
-            area.connect("draw", lambda w, cr: draw_theme_preview(
-                cr, w.get_allocated_width(), w.get_allocated_height(), self.store.get) or False)
+            def getter(k):
+                return self.store.get(k)
             desc = "Your own edits."
         else:
             vals = THEMES[name]["values"]
-            area.connect("draw", lambda w, cr, v=vals: draw_theme_preview(
-                cr, w.get_allocated_width(), w.get_allocated_height(), lambda k: v[k]) or False)
+
+            def getter(k, v=vals):
+                return v[k] if k in v else C.default_value(k)
             desc = THEMES[name]["description"]
+
+        def draw(w, cr, g=getter):
+            width, height = w.get_allocated_width(), w.get_allocated_height()
+            cr.save()
+            _rounded(cr, 0, 0, width, height, 10)
+            cr.clip()
+            draw_dock_preview(cr, width, height, g, compact=True)
+            cr.restore()
+            return False
+        area.connect("draw", draw)
         box.pack_start(area, False, False, 0)
-        title = Gtk.Label(label=theme_label(name), xalign=0)
-        box.pack_start(title, False, False, 0)
-        d = Gtk.Label(label=desc, xalign=0)
-        d.set_line_wrap(True)
-        d.set_max_width_chars(26)
-        d.get_style_context().add_class("dim-label")
+        head = Gtk.Box(spacing=8)
+        head.pack_start(label(theme_label(name), "md-theme-name"), True, True, 0)
+        pill = style(Gtk.Label(label="ACTIVE"), "md-active-pill")
+        pill.set_no_show_all(True)
+        head.pack_end(pill, False, False, 0)
+        box.pack_start(head, False, False, 0)
+        d = label(desc, "md-theme-desc", wrap=True)
+        d.set_max_width_chars(28)
         box.pack_start(d, False, False, 0)
         btn.add(box)
-        btn.connect("clicked", lambda *_: self.store.apply_theme(name) if name != CUSTOM else None)
-        btn.set_sensitive(True)
-        self.buttons[name] = (btn, area)
+        if name == CUSTOM:
+            btn.set_tooltip_text("Edit any color or style setting to use a custom look")
+        else:
+            btn.connect("clicked", lambda *_: self.store.apply_theme(name))
+        self.cards[name] = (btn, area, pill)
         return btn
 
     def refresh(self):
         cur = self.store.cfg.get("theme")
-        for name, (btn, area) in self.buttons.items():
+        for name, (btn, area, pill) in self.cards.items():
             ctx = btn.get_style_context()
             if name == cur:
-                ctx.add_class("suggested-action")
+                ctx.add_class("active")
+                pill.show()
             else:
-                ctx.remove_class("suggested-action")
+                ctx.remove_class("active")
+                pill.hide()
             if name == CUSTOM:
                 area.queue_draw()
 
@@ -489,12 +772,14 @@ class AppPicker(Gtk.Dialog):
     def __init__(self, parent, entries):
         super().__init__(title="Add application", transient_for=parent, modal=True)
         self.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Add", Gtk.ResponseType.OK)
-        self.set_default_size(460, 520)
+        self.set_default_response(Gtk.ResponseType.OK)
+        self.set_default_size(460, 540)
         box = self.get_content_area()
         self.search = Gtk.SearchEntry()
-        self.search.set_margin_start(8)
-        self.search.set_margin_end(8)
-        self.search.set_margin_top(8)
+        self.search.set_placeholder_text("Search applications")
+        self.search.set_margin_start(12)
+        self.search.set_margin_end(12)
+        self.search.set_margin_top(12)
         box.pack_start(self.search, False, False, 0)
         self.listbox = Gtk.ListBox()
         self.listbox.set_filter_func(self._filter)
@@ -503,20 +788,28 @@ class AppPicker(Gtk.Dialog):
             row = Gtk.ListBoxRow()
             row.entry_id = e.id
             row.text = ("%s %s %s" % (e.name, e.generic_name, e.id)).lower()
-            hb = Gtk.Box(spacing=10)
-            hb.set_margin_start(8)
-            hb.set_margin_top(4)
-            hb.set_margin_bottom(4)
+            hb = Gtk.Box(spacing=12)
+            hb.set_margin_start(12)
+            hb.set_margin_end(12)
+            hb.set_margin_top(6)
+            hb.set_margin_bottom(6)
             img = Gtk.Image.new_from_gicon(gicon_for(e.icon, e), Gtk.IconSize.DND)
             img.set_pixel_size(32)
             hb.pack_start(img, False, False, 0)
-            hb.pack_start(Gtk.Label(label=e.name, xalign=0), True, True, 0)
+            hb.pack_start(label(e.name), True, True, 0)
             row.add(hb)
             self.listbox.add(row)
         self.listbox.connect("row-activated", lambda *_: self.response(Gtk.ResponseType.OK))
-        box.pack_start(scrolled(self.listbox), True, True, 8)
+        sw = scrolled(self.listbox)
+        sw.set_margin_start(12)
+        sw.set_margin_end(12)
+        sw.set_margin_top(10)
+        sw.set_margin_bottom(12)
+        sw.set_shadow_type(Gtk.ShadowType.IN)
+        box.pack_start(sw, True, True, 0)
         self.search.connect("search-changed", lambda *_: self.listbox.invalidate_filter())
         self.show_all()
+        self.search.grab_focus()
 
     def _filter(self, row):
         q = self.search.get_text().strip().lower()
@@ -531,21 +824,25 @@ class LauncherDialog(Gtk.Dialog):
     def __init__(self, parent, spec=None):
         super().__init__(title="Custom launcher", transient_for=parent, modal=True)
         self.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Save", Gtk.ResponseType.OK)
-        grid = Gtk.Grid(column_spacing=10, row_spacing=8)
-        grid.set_margin_start(14)
-        grid.set_margin_end(14)
-        grid.set_margin_top(14)
-        grid.set_margin_bottom(8)
+        self.set_default_response(Gtk.ResponseType.OK)
+        grid = Gtk.Grid(column_spacing=12, row_spacing=10)
+        for side in ("start", "end", "top"):
+            getattr(grid, "set_margin_" + side)(18)
+        grid.set_margin_bottom(10)
         self.name = Gtk.Entry()
         self.exec = Gtk.Entry()
         self.icon = Gtk.Entry()
         self.match = Gtk.Entry()
+        for e in (self.name, self.exec, self.icon, self.match):
+            e.set_activates_default(True)
         self.name.set_hexpand(True)
+        self.name.set_placeholder_text("e.g. Notes")
+        self.exec.set_placeholder_text("command to run, e.g. foot -e htop")
         self.icon.set_placeholder_text("icon name or image path")
         self.match.set_placeholder_text("optional: window app_id / class to show as running")
         rows = [("Name", self.name), ("Command", self.exec), ("Icon", self.icon), ("Match", self.match)]
-        for i, (label, widget) in enumerate(rows):
-            grid.attach(Gtk.Label(label=label, xalign=1), 0, i, 1, 1)
+        for i, (text, widget) in enumerate(rows):
+            grid.attach(label(text, "md-key", xalign=1.0), 0, i, 1, 1)
             grid.attach(widget, 1, i, 1, 1)
         browse = Gtk.Button(label="Browse…")
         browse.connect("clicked", self.browse)
@@ -557,6 +854,7 @@ class LauncherDialog(Gtk.Dialog):
             self.icon.set_text(spec.get("icon", ""))
             self.match.set_text(spec.get("match", ""))
         self.ok = self.get_widget_for_response(Gtk.ResponseType.OK)
+        style(self.ok, "suggested-action")
         for w in (self.name, self.exec):
             w.connect("changed", self.check)
         self.check()
@@ -578,19 +876,87 @@ class LauncherDialog(Gtk.Dialog):
         return s
 
 
+class ItemDialog(Gtk.Dialog):
+    """Rename a pinned app and/or give it a different icon (the .desktop file is untouched)."""
+
+    def __init__(self, parent, spec, entry):
+        super().__init__(title="Customize %s" % entry.name, transient_for=parent, modal=True)
+        self.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Save", Gtk.ResponseType.OK)
+        self.set_default_response(Gtk.ResponseType.OK)
+        self.spec_id, self.entry = spec["id"], entry
+        grid = Gtk.Grid(column_spacing=12, row_spacing=10)
+        for side in ("start", "end", "top"):
+            getattr(grid, "set_margin_" + side)(18)
+        grid.set_margin_bottom(10)
+        self.preview = Gtk.Image()
+        self.preview.set_margin_bottom(6)
+        grid.attach(self.preview, 0, 0, 3, 1)
+        self.name = Gtk.Entry()
+        self.icon = Gtk.Entry()
+        for e in (self.name, self.icon):
+            e.set_activates_default(True)
+        self.name.set_hexpand(True)
+        self.name.set_placeholder_text(entry.name)
+        self.icon.set_placeholder_text(entry.icon or "icon name or image path")
+        grid.attach(label("Name", "md-key", xalign=1.0), 0, 1, 1, 1)
+        grid.attach(self.name, 1, 1, 1, 1)
+        grid.attach(label("Icon", "md-key", xalign=1.0), 0, 2, 1, 1)
+        grid.attach(self.icon, 1, 2, 1, 1)
+        browse = Gtk.Button(label="Browse…")
+        browse.connect("clicked", self.browse)
+        grid.attach(browse, 2, 2, 1, 1)
+        grid.attach(label("Leave a field empty to keep the app's own name or icon.", "md-row-help", wrap=True),
+                    1, 3, 2, 1)
+        reset = Gtk.Button(label="Use app defaults")
+        reset.connect("clicked", lambda *_: (self.name.set_text(""), self.icon.set_text("")))
+        reset.set_halign(Gtk.Align.START)
+        grid.attach(reset, 1, 4, 2, 1)
+        self.get_content_area().add(grid)
+        self.name.set_text(spec.get("name", ""))
+        self.icon.set_text(spec.get("icon", ""))
+        style(self.get_widget_for_response(Gtk.ResponseType.OK), "suggested-action")
+        self.icon.connect("changed", self.update_preview)
+        self.update_preview()
+        self.show_all()
+        self.name.grab_focus()
+
+    def update_preview(self, *_):
+        icon = self.icon.get_text().strip() or self.entry.icon
+        self.preview.set_from_gicon(gicon_for(icon, self.entry), Gtk.IconSize.DIALOG)
+        self.preview.set_pixel_size(64)
+
+    def browse(self, *_):
+        dlg = Gtk.FileChooserNative(title="Choose icon", transient_for=self, action=Gtk.FileChooserAction.OPEN)
+        if dlg.run() == Gtk.ResponseType.ACCEPT:
+            self.icon.set_text(dlg.get_filename())
+
+    def spec(self):
+        s = {"type": "app", "id": self.spec_id}
+        if self.name.get_text().strip():
+            s["name"] = self.name.get_text().strip()
+        if self.icon.get_text().strip():
+            s["icon"] = self.icon.get_text().strip()
+        return s
+
+
 class LaunchersPage(Gtk.Box):
     def __init__(self, store, window):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.store, self.window = store, window
         self.loading = False
-        self.pack_start(heading("Launchers", "Drag rows to reorder. Items stay in this order on the dock. "
+        self.pack_start(heading("Launchers", "Drag rows to reorder. Double-click an app or launcher to rename it or change its icon. "
                                 "Running apps that are not pinned appear after a divider."), False, False, 0)
+
         self.model = Gtk.ListStore(Gio.Icon, str, str)  # gicon, label, json
         self.tree = Gtk.TreeView(model=self.model)
         self.tree.set_headers_visible(False)
         self.tree.set_reorderable(True)
+        self.tree.set_enable_search(False)
+        self.tree.set_activate_on_single_click(False)
         pix = Gtk.CellRendererPixbuf()
         pix.set_property("stock-size", Gtk.IconSize.LARGE_TOOLBAR)
+        pix.set_property("xpad", 12)
+        pix.set_property("ypad", 7)
         col = Gtk.TreeViewColumn("Item")
         col.pack_start(pix, False)
         col.add_attribute(pix, "gicon", 0)
@@ -600,35 +966,53 @@ class LaunchersPage(Gtk.Box):
         col.add_attribute(txt, "text", 1)
         self.tree.append_column(col)
         self.tree.connect("row-activated", self.edit_row)
+        self.tree.get_selection().connect("changed", self.update_buttons)
         self.model.connect("row-deleted", lambda *_: GLib.idle_add(self.sync_from_model))
         sw = scrolled(self.tree)
-        sw.set_margin_start(16)
-        sw.set_margin_end(16)
-        sw.set_size_request(-1, 280)
-        sw.set_shadow_type(Gtk.ShadowType.IN)
-        self.pack_start(sw, True, True, 0)
+        sw.set_size_request(-1, 320)
+        self.empty = label("No items yet. Add an application to get started.", "md-empty", xalign=0.5)
+        self.empty.set_no_show_all(True)
+        inner = Gtk.Overlay()
+        inner.add(sw)
+        inner.add_overlay(self.empty)
+        self.empty.set_halign(Gtk.Align.CENTER)
+        self.empty.set_valign(Gtk.Align.CENTER)
+        inner.set_overlay_pass_through(self.empty, True)
+        self.pack_start(card(inner), True, True, 0)
 
-        bar = Gtk.FlowBox()
-        bar.set_selection_mode(Gtk.SelectionMode.NONE)
-        bar.set_margin_start(12)
-        bar.set_margin_end(12)
-        bar.set_margin_top(8)
-        bar.set_margin_bottom(8)
-        bar.set_max_children_per_line(5)
-        for label, cb in [
-            ("Add application…", self.add_app), ("Add custom launcher…", self.add_custom),
-            ("Add separator", lambda *_: self.append({"type": "separator"})),
-            ("Add Applications button", lambda *_: self.append({"type": "special", "kind": "apps"})),
-            ("Add Trash", lambda *_: self.append({"type": "special", "kind": "trash"})),
-            ("Move up", lambda *_: self.move(-1)), ("Move down", lambda *_: self.move(1)),
-            ("Remove", self.remove), ("Reset to defaults", self.reset),
-        ]:
-            b = Gtk.Button(label=label)
-            b.connect("clicked", cb)
-            bar.add(b)
+        bar = style(Gtk.Box(spacing=6), "md-toolbar")
+        bar.set_margin_top(12)
+        bar.pack_start(text_button("Add application…", self.add_app, suggested=True), False, False, 0)
+        more = Gtk.MenuButton(label="Add other")
+        pop = Gtk.Popover()
+        pbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        pbox.set_margin_start(6)
+        pbox.set_margin_end(6)
+        pbox.set_margin_top(6)
+        pbox.set_margin_bottom(6)
+        for text, cb in [("Custom launcher…", self.add_custom),
+                         ("Separator", lambda *_: self.append({"type": "separator"})),
+                         ("Applications button", lambda *_: self.append({"type": "special", "kind": "apps"})),
+                         ("Trash", lambda *_: self.append({"type": "special", "kind": "trash"}))]:
+            item = Gtk.ModelButton(text=text)
+            item.connect("clicked", lambda _b, f=cb: (pop.popdown(), f()))
+            pbox.pack_start(item, False, False, 0)
+        pbox.show_all()
+        pop.add(pbox)
+        more.set_popover(pop)
+        bar.pack_start(more, False, False, 0)
+        self.edit_btn = icon_button("document-edit-symbolic", "Rename / change icon…", lambda *_: self.edit_selected())
+        bar.pack_start(self.edit_btn, False, False, 0)
+        self.up_btn = icon_button("go-up-symbolic", "Move up", lambda *_: self.move(-1))
+        self.down_btn = icon_button("go-down-symbolic", "Move down", lambda *_: self.move(1))
+        self.rm_btn = icon_button("user-trash-symbolic", "Remove from dock", self.remove)
+        for b in (self.up_btn, self.down_btn, self.rm_btn):
+            bar.pack_start(b, False, False, 0)
+        bar.pack_end(text_button("Reset to defaults", self.reset), False, False, 0)
         self.pack_start(bar, False, False, 0)
-        self.load()
         store.listen_external(self.load)
+        self.load()
+        self.update_buttons()
 
     # model <-> config
     def describe(self, spec):
@@ -637,21 +1021,34 @@ class LaunchersPage(Gtk.Box):
             return gicon_for("list-remove-symbolic"), "──  Separator  ──"
         if t == "special":
             info = C.SPECIAL_KINDS[spec["kind"]]
-            return gicon_for(info["icon"]), info["name"] + " (built-in)"
+            return gicon_for(info["icon"]), info["name"] + "  ·  built-in"
         if t == "launcher":
             return gicon_for(spec.get("icon")), spec["name"] + "  ·  custom launcher"
         entry = self.store.entries.get(spec["id"])
         if entry is None:
             return gicon_for("dialog-question-symbolic"), "%s  (not installed)" % spec["id"]
-        return gicon_for(entry.icon, entry), entry.name
+        name, icon = spec.get("name") or entry.name, spec.get("icon") or entry.icon
+        tag = "  ·  customized" if (spec.get("name") or spec.get("icon")) else ""
+        return gicon_for(icon, entry), name + tag
 
     def load(self):
         self.loading = True
         self.model.clear()
         for spec in self.store.cfg["items"]:
-            icon, label = self.describe(spec)
-            self.model.append([icon, label, json.dumps(spec)])
+            icon, text = self.describe(spec)
+            self.model.append([icon, text, json.dumps(spec)])
         self.loading = False
+        self.empty.set_visible(len(self.model) == 0)
+        self.update_buttons()
+
+    def update_buttons(self, *_):
+        i = self.selected_index()
+        n = len(self.model)
+        self.up_btn.set_sensitive(i is not None and i > 0)
+        self.down_btn.set_sensitive(i is not None and i < n - 1)
+        self.rm_btn.set_sensitive(i is not None)
+        kind = self.current_items()[i]["type"] if i is not None and i < n else None
+        self.edit_btn.set_sensitive(kind in ("app", "launcher"))
 
     def sync_from_model(self):
         if self.loading:
@@ -661,9 +1058,11 @@ class LaunchersPage(Gtk.Box):
             self.store.set_items(items)
         return False
 
-    def commit(self, items):
+    def commit(self, items, select=None):
         self.store.set_items(items)
         self.load()
+        if select is not None and 0 <= select < len(self.model):
+            self.tree.get_selection().select_path(Gtk.TreePath(select))
 
     def current_items(self):
         return [json.loads(r[2]) for r in self.model]
@@ -673,7 +1072,8 @@ class LaunchersPage(Gtk.Box):
         return sel[0].get_indices()[0] if sel else None
 
     def append(self, spec):
-        self.commit(self.current_items() + [spec])
+        items = self.current_items() + [spec]
+        self.commit(items, select=len(items) - 1)
 
     def add_app(self, *_):
         dlg = AppPicker(self.window, self.store.entries)
@@ -690,14 +1090,28 @@ class LaunchersPage(Gtk.Box):
         dlg.destroy()
 
     def edit_row(self, tree, path, col):
-        idx = path.get_indices()[0]
+        self.edit_at(path.get_indices()[0])
+
+    def edit_selected(self, *_):
+        i = self.selected_index()
+        if i is not None:
+            self.edit_at(i)
+
+    def edit_at(self, idx):
+        """Open the right editor for item `idx` (custom launcher or pinned app)."""
         items = self.current_items()
-        if items[idx]["type"] != "launcher":
+        if not 0 <= idx < len(items):
             return
-        dlg = LauncherDialog(self.window, items[idx])
+        spec = items[idx]
+        if spec["type"] == "launcher":
+            dlg = LauncherDialog(self.window, spec)
+        elif spec["type"] == "app" and self.store.entries.get(spec["id"]) is not None:
+            dlg = ItemDialog(self.window, spec, self.store.entries[spec["id"]])
+        else:
+            return
         if dlg.run() == Gtk.ResponseType.OK:
             items[idx] = dlg.spec()
-            self.commit(items)
+            self.commit(items, select=idx)
         dlg.destroy()
 
     def move(self, delta):
@@ -706,8 +1120,7 @@ class LaunchersPage(Gtk.Box):
         if i is None or not 0 <= i + delta < len(items):
             return
         items[i], items[i + delta] = items[i + delta], items[i]
-        self.commit(items)
-        self.tree.get_selection().select_path(Gtk.TreePath(i + delta))
+        self.commit(items, select=i + delta)
 
     def remove(self, *_):
         i = self.selected_index()
@@ -715,7 +1128,7 @@ class LaunchersPage(Gtk.Box):
             return
         items = self.current_items()
         del items[i]
-        self.commit(items)
+        self.commit(items, select=min(i, len(items) - 1))
 
     def reset(self, *_):
         self.store.reset_items()
@@ -726,18 +1139,19 @@ class LaunchersPage(Gtk.Box):
 
 class OverrideRow(Gtk.Box):
     def __init__(self, setting, store, output):
-        super().__init__(spacing=12)
+        super().__init__(spacing=14)
         self.setting, self.store, self.output = setting, store, output
-        self.set_margin_start(16)
-        self.set_margin_end(16)
-        self.set_margin_top(6)
-        self.set_margin_bottom(6)
+        for side in ("start", "end"):
+            getattr(self, "set_margin_" + side)(16)
+        self.set_margin_top(10)
+        self.set_margin_bottom(10)
         self.check = Gtk.CheckButton(label=setting.label)
         self.pack_start(self.check, True, True, 0)
         ov = store.monitor(output)
         has = setting.key in ov
         value = ov.get(setting.key, store.get(setting.key))
         self.control, self.setv = make_control(setting, value, self.on_value)
+        self.control.set_valign(Gtk.Align.CENTER)
         self.pack_start(self.control, False, False, 0)
         self.check.set_active(has)
         self.control.set_sensitive(has)
@@ -768,20 +1182,15 @@ class MonitorsPage(Gtk.Box):
         self.pack_start(heading("Monitors", "Each connected monitor gets its own dock. Choose a monitor to "
                                 "disable its dock or override a few settings just for it."), False, False, 0)
         top = Gtk.Box(spacing=8)
-        top.set_margin_start(16)
-        top.set_margin_end(16)
         self.combo = Gtk.ComboBoxText.new_with_entry()
         self.combo.set_size_request(260, -1)
-        top.pack_start(Gtk.Label(label="Monitor"), False, False, 0)
+        top.pack_start(label("Monitor", "md-key"), False, False, 0)
         top.pack_start(self.combo, False, False, 0)
-        refresh = Gtk.Button(label="Detect monitors")
-        refresh.connect("clicked", lambda *_: self.detect())
-        top.pack_start(refresh, False, False, 0)
+        top.pack_start(text_button("Detect monitors", lambda *_: self.detect()), False, False, 0)
         self.pack_start(top, False, False, 0)
-        self.msg = Gtk.Label(xalign=0)
-        self.msg.set_margin_start(16)
-        self.msg.get_style_context().add_class("dim-label")
-        self.pack_start(self.msg, False, False, 4)
+        self.msg = label("", "md-page-sub")
+        self.msg.set_margin_top(8)
+        self.pack_start(self.msg, False, False, 0)
         self.body = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.pack_start(self.body, False, False, 0)
         self.combo.connect("changed", lambda *_: self.rebuild())
@@ -816,23 +1225,36 @@ class MonitorsPage(Gtk.Box):
         name = self.current()
         if not name:
             return
-        row = Gtk.Box(spacing=12)
-        row.set_margin_start(16)
-        row.set_margin_end(16)
-        row.set_margin_top(10)
-        row.pack_start(Gtk.Label(label="Show a dock on this monitor", xalign=0), True, True, 0)
+        self.body.pack_start(group_title("Dock on %s" % name), False, False, 0)
+        lb = settings_list()
+        enable = Gtk.Box(spacing=14)
+        enable.set_margin_start(16)
+        enable.set_margin_end(16)
+        enable.set_margin_top(10)
+        enable.set_margin_bottom(10)
+        enable.pack_start(label("Show a dock on this monitor", "md-row-title"), True, True, 0)
         sw = Gtk.Switch()
         sw.set_active(C.monitor_enabled(self.store.cfg, name))
+        sw.set_valign(Gtk.Align.CENTER)
         sw.connect("notify::active", lambda s, *_: self.store.set_monitor(name, "enabled", s.get_active()))
-        row.pack_start(sw, False, False, 0)
-        self.body.pack_start(row, False, False, 0)
+        enable.pack_start(sw, False, False, 0)
+        row_in_list(lb, enable)
+        self.body.pack_start(card(lb), False, False, 0)
+
+        self.body.pack_start(group_title("Overrides for this monitor"), False, False, 0)
+        olb = settings_list()
         for key in C.MONITOR_OVERRIDE_KEYS:
-            self.body.pack_start(OverrideRow(C.SETTINGS[key], self.store, name), False, False, 0)
-        forget = Gtk.Button(label="Remove all overrides for this monitor")
+            row_in_list(olb, OverrideRow(C.SETTINGS[key], self.store, name))
+        self.body.pack_start(card(olb), False, False, 0)
+        hint = label("Tick a setting to give this monitor its own value; untick to follow the global one.",
+                     "md-row-help", wrap=True)
+        hint.set_margin_top(8)
+        hint.set_margin_start(4)
+        self.body.pack_start(hint, False, False, 0)
+        forget = text_button("Remove all overrides for this monitor",
+                             lambda *_: (self.store.forget_monitor(name), self.rebuild()))
         forget.set_halign(Gtk.Align.START)
-        forget.set_margin_start(16)
-        forget.set_margin_top(10)
-        forget.connect("clicked", lambda *_: (self.store.forget_monitor(name), self.rebuild()))
+        forget.set_margin_top(12)
         self.body.pack_start(forget, False, False, 0)
         self.body.show_all()
 
@@ -840,48 +1262,109 @@ class MonitorsPage(Gtk.Box):
 # --------------------------------------------------------------------- status
 
 class StatusPage(Gtk.Box):
+    REFRESH_MS = 3000
+
     def __init__(self, store):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.store = store
+        self.pending = False
+        self.timer = None
         self.pack_start(heading("Status", "Live information from the running dock."), False, False, 0)
-        self.info = Gtk.Label(xalign=0, yalign=0)
-        self.info.set_margin_start(16)
-        self.info.set_selectable(True)
-        self.pack_start(self.info, False, False, 0)
-        bar = Gtk.Box(spacing=8)
-        bar.set_margin_start(16)
-        bar.set_margin_top(10)
-        for label, cb in [("Refresh", lambda *_: self.refresh()), ("Start dock", self.start),
-                          ("Restart dock", self.restart), ("Stop dock", self.stop),
-                          ("Open config folder", self.open_folder)]:
-            b = Gtk.Button(label=label)
-            b.connect("clicked", cb)
-            bar.pack_start(b, False, False, 0)
+
+        self.badge = style(Gtk.Label(label="Checking…"), "md-badge")
+        self.badge.set_halign(Gtk.Align.START)
+        top = Gtk.Box(spacing=10)
+        top.set_margin_start(16)
+        top.set_margin_top(14)
+        top.set_margin_bottom(6)
+        top.pack_start(label("Dock", "md-row-title"), False, False, 0)
+        top.pack_start(self.badge, False, False, 0)
+
+        self.grid = Gtk.Grid(column_spacing=24, row_spacing=8)
+        self.grid.set_margin_start(16)
+        self.grid.set_margin_end(16)
+        self.grid.set_margin_bottom(16)
+        self.values = {}
+        fields = [("version", "Dock version"), ("app", "Settings app"), ("config", "Config file"),
+                  ("sway", "Sway IPC"), ("outputs", "Monitors with a dock"), ("windows", "Open windows seen"),
+                  ("items", "Dock items"), ("blur", "Blur"), ("theme", "Theme"), ("autostart", "Autostart")]
+        for i, (key, text) in enumerate(fields):
+            self.grid.attach(label(text, "md-key"), 0, i, 1, 1)
+            v = label("–", "md-mono", selectable=True, wrap=True)
+            v.set_hexpand(True)
+            self.grid.attach(v, 1, i, 1, 1)
+            self.values[key] = v
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        inner.pack_start(top, False, False, 0)
+        inner.pack_start(self.grid, False, False, 0)
+        self.pack_start(card(inner), False, False, 0)
+
+        bar = style(Gtk.Box(spacing=6), "md-toolbar")
+        bar.set_margin_top(12)
+        for text, cb in [("Refresh", lambda *_: self.refresh()), ("Start dock", self.start),
+                         ("Restart dock", self.restart), ("Stop dock", self.stop),
+                         ("Open config folder", self.open_folder)]:
+            bar.pack_start(text_button(text, cb), False, False, 0)
         self.pack_start(bar, False, False, 0)
-        note = Gtk.Label(xalign=0)
-        note.set_markup(
-            "<small>Blur: GlassDock only reports blur as active if SwayFX accepted the "
-            "<tt>layer_effects</tt> command; otherwise the dock is translucent without blur.</small>")
-        note.set_line_wrap(True)
-        note.set_margin_start(16)
-        note.set_margin_end(16)
-        note.set_margin_top(14)
+        note = label("Blur is only reported as active if SwayFX accepted the layer_effects command; "
+                     "otherwise the dock is translucent without blur.", "md-page-sub", wrap=True)
+        note.set_margin_top(16)
         self.pack_start(note, False, False, 0)
+        self.connect("map", self.on_map)
+        self.connect("unmap", self.on_unmap)
         self.refresh()
 
+    def on_map(self, *_):
+        self.refresh()
+        if self.timer is None:
+            self.timer = GLib.timeout_add(self.REFRESH_MS, self._tick)
+
+    def on_unmap(self, *_):
+        if self.timer is not None:
+            GLib.source_remove(self.timer)
+            self.timer = None
+
+    def _tick(self):
+        self.refresh()
+        return True
+
+    def set_badge(self, text, kind):
+        ctx = self.badge.get_style_context()
+        for k in ("ok", "off", "bad"):
+            ctx.remove_class(k)
+        ctx.add_class(kind)
+        self.badge.set_text(text)
+
     def refresh(self):
-        r = control.send_command({"cmd": "status"})
-        lines = ["Settings app: v%s" % __version__, "Config file: %s" % C.config_path()]
+        if self.pending:
+            return
+        self.pending = True
+
+        def work():
+            reply = control.send_command({"cmd": "status"})
+            GLib.idle_add(self.apply, reply)
+        threading.Thread(target=work, daemon=True).start()
+
+    def apply(self, r):
+        self.pending = False
+        v = self.values
+        v["app"].set_text("v%s" % __version__)
+        v["config"].set_text(C.config_path())
         if r is None:
-            lines.insert(0, "Dock: not running")
-        else:
-            lines.insert(0, "Dock: running (v%s)" % r.get("version"))
-            lines += ["Sway IPC: %s" % ("connected" if r.get("sway_ipc") else "not connected (no running indicators)"),
-                      "Monitors with a dock: %s" % (", ".join(r.get("outputs", [])) or "none"),
-                      "Open windows seen: %s" % r.get("windows"), "Dock items: %s" % r.get("items"),
-                      "Blur: %s" % r.get("blur"), "Theme: %s" % r.get("theme"),
-                      "Autostart: %s (%s)" % ("on" if r.get("autostart") else "off", r.get("autostart_wms"))]
-        self.info.set_text("\n".join(lines))
+            self.set_badge("Not running", "off")
+            for k in ("version", "sway", "outputs", "windows", "items", "blur", "theme", "autostart"):
+                v[k].set_text("–")
+            return False
+        self.set_badge("Running", "ok")
+        v["version"].set_text("v%s" % r.get("version"))
+        v["sway"].set_text("connected" if r.get("sway_ipc") else "not connected (no running indicators)")
+        v["outputs"].set_text(", ".join(r.get("outputs", [])) or "none")
+        v["windows"].set_text(str(r.get("windows")))
+        v["items"].set_text(str(r.get("items")))
+        v["blur"].set_text(str(r.get("blur")))
+        v["theme"].set_text(str(r.get("theme")))
+        v["autostart"].set_text("%s (%s)" % ("on" if r.get("autostart") else "off", r.get("autostart_wms")))
+        return False
 
     def _spawn_dock(self):
         # go through the launcher script so the layer-shell preload is applied
@@ -909,85 +1392,165 @@ class StatusPage(Gtk.Box):
 # --------------------------------------------------------------------- window
 
 class SettingsWindow(Gtk.Window):
-    def __init__(self):
+    def __init__(self, edit_index=None):
         super().__init__(title="GlassDock Settings")
-        self.set_default_size(980, 700)
+        self.set_default_size(1040, 740)
+        self.set_icon_name("preferences-system")
+        install_css()
         self.store = Store()
         self.store.on_saved = self.on_saved
         self.store.listen(self.refresh_rows)
         self.rows = []
         self.search_rows = []
+        self.status_timer = None
 
-        hb = Gtk.HeaderBar()
-        hb.set_show_close_button(True)
-        hb.set_title("GlassDock Settings")
-        self.status = Gtk.Label(label="")
-        self.status.get_style_context().add_class("dim-label")
-        hb.pack_start(self.status)
-        reset = Gtk.Button(label="Reset all settings…")
-        reset.connect("clicked", self.reset_all)
-        hb.pack_end(reset)
-        self.set_titlebar(hb)
+        self.set_titlebar(self.build_header())
 
-        paned = Gtk.Paned()
-        self.add(paned)
-        side = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.search = Gtk.SearchEntry()
-        self.search.set_placeholder_text("Search settings")
-        self.search.set_margin_start(8)
-        self.search.set_margin_end(8)
-        self.search.set_margin_top(8)
-        self.search.set_margin_bottom(8)
+        root = Gtk.Box()
+        self.add(root)
+
+        side = style(Gtk.Box(orientation=Gtk.Orientation.VERTICAL), "md-sidebar")
+        side.set_size_request(236, -1)
+        self.search = style(Gtk.SearchEntry(), "md-search")
+        self.search.set_placeholder_text("Search settings  (Ctrl+F)")
         self.search.connect("search-changed", self.on_search)
         side.pack_start(self.search, False, False, 0)
         self.sidebar = Gtk.ListBox()
+        self.sidebar.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.sidebar.connect("row-selected", self.on_select)
-        side.pack_start(self.sidebar, True, True, 0)
-        side.set_size_request(210, -1)
-        paned.pack1(side, False, False)
+        side.pack_start(scrolled(self.sidebar), True, True, 0)
+        root.pack_start(side, False, False, 0)
 
+        content = style(Gtk.Box(orientation=Gtk.Orientation.VERTICAL), "md-content")
+        root.pack_start(content, True, True, 0)
+        self.preview = LivePreview(self.store)
+        self.revealer = Gtk.Revealer()
+        self.revealer.set_transition_type(Gtk.RevealerTransitionType.SLIDE_DOWN)
+        self.revealer.set_transition_duration(160)
+        self.revealer.add(self.preview)
+        content.pack_start(self.revealer, False, False, 0)
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        paned.pack2(self.stack, True, False)
+        self.stack.set_transition_duration(120)
+        content.pack_start(self.stack, True, True, 0)
 
+        self.add_section("Appearance")
         self.add_page("themes", "Themes", ThemesPage(self.store))
-        for cat, label in C.CATEGORIES:
-            self.add_page(cat, label, self.category_page(cat, label))
-        self.add_page("launchers", "Launchers", LaunchersPage(self.store, self))
+        for cat, text in C.CATEGORIES:
+            if cat in ("style", "size", "animation", "indicators"):
+                self.add_page(cat, text, self.category_page(cat, text))
+        self.add_section("Dock")
+        for cat, text in C.CATEGORIES:
+            if cat in ("position", "behavior"):
+                self.add_page(cat, text, self.category_page(cat, text))
+        self.launchers = LaunchersPage(self.store, self)
+        self.add_page("launchers", "Launchers", self.launchers)
         self.add_page("monitors", "Monitors", MonitorsPage(self.store))
+        self.add_section("System")
         self.add_page("status", "Status", StatusPage(self.store))
         self.search_box = page_box()
         self.stack.add_named(scrolled(self.search_box), "search")
-        self.sidebar.select_row(self.sidebar.get_row_at_index(0))
+
+        self.connect("key-press-event", self.on_key)
         self.connect("delete-event", self.on_close)
         self.show_all()
+        if edit_index is not None:  # opened from the dock's right-click menu
+            self.select_page("launchers")
+            GLib.idle_add(lambda: (self.launchers.edit_at(edit_index), False)[1])
+        else:
+            self.select_page("themes")
 
-    def add_page(self, name, label, widget):
-        if not isinstance(widget, Gtk.ScrolledWindow):
-            widget = scrolled(widget)
-        self.stack.add_named(widget, name)
+    def build_header(self):
+        hb = Gtk.HeaderBar()
+        hb.set_show_close_button(True)
+        hb.set_title("GlassDock Settings")
+        hb.set_subtitle("v%s" % __version__)
+        self.status = style(Gtk.Label(label=""), "md-pill")
+        self.status.set_no_show_all(True)
+        hb.pack_start(self.status)
+
+        menu = Gtk.MenuButton()
+        menu.add(Gtk.Image.new_from_icon_name("open-menu-symbolic", Gtk.IconSize.BUTTON))
+        pop = Gtk.Popover()
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(box, "set_margin_" + side)(6)
+        for text, cb in [("Reset all settings…", self.reset_all),
+                         ("Open config folder", lambda *_: subprocess.Popen(
+                             ["xdg-open", C.config_dir()], start_new_session=True)),
+                         ("About GlassDock", self.show_about)]:
+            item = Gtk.ModelButton(text=text)
+            item.connect("clicked", lambda _b, f=cb: (pop.popdown(), f()))
+            box.pack_start(item, False, False, 0)
+        box.show_all()
+        pop.add(box)
+        menu.set_popover(pop)
+        hb.pack_end(menu)
+        return hb
+
+    # sidebar
+    def add_section(self, text):
         row = Gtk.ListBoxRow()
-        row.page = name
-        lbl = Gtk.Label(label=label, xalign=0)
-        lbl.set_margin_start(14)
-        lbl.set_margin_top(9)
-        lbl.set_margin_bottom(9)
+        row.page = None
+        row.set_selectable(False)
+        row.set_activatable(False)
+        style(row, "md-section")
+        lbl = label(text.upper(), "md-section-label")
+        lbl.set_margin_start(12)
+        lbl.set_margin_top(4)
+        lbl.set_margin_bottom(2)
         row.add(lbl)
         self.sidebar.add(row)
 
-    def category_page(self, cat, label):
+    def add_page(self, name, text, widget):
+        if not isinstance(widget, Gtk.ScrolledWindow):
+            widget = scrolled(self.padded(widget))
+        self.stack.add_named(widget, name)
+        row = Gtk.ListBoxRow()
+        row.page = name
+        box = Gtk.Box(spacing=10)
+        box.set_margin_start(10)
+        box.set_margin_end(10)
+        box.set_margin_top(7)
+        box.set_margin_bottom(7)
+        box.pack_start(icon_image(PAGE_ICONS.get(name, ("preferences-system-symbolic",))), False, False, 0)
+        box.pack_start(label(text), True, True, 0)
+        row.add(box)
+        self.sidebar.add(row)
+
+    @staticmethod
+    def padded(widget):
+        if isinstance(widget, (ThemesPage, LaunchersPage, MonitorsPage, StatusPage)):
+            wrap = page_box()
+            wrap.pack_start(widget, True, True, 0)
+            return wrap
+        return widget
+
+    def select_page(self, name):
+        for row in self.sidebar.get_children():
+            if getattr(row, "page", None) == name:
+                self.sidebar.select_row(row)
+                return
+
+    def category_page(self, cat, text):
         box = page_box()
-        box.pack_start(heading(label), False, False, 0)
+        box.pack_start(heading(text, CATEGORY_BLURBS.get(cat)), False, False, 0)
+        lb = settings_list()
         for s in C.SCHEMA:
             if s.category == cat:
                 row = SettingRow(s, self.store)
                 self.rows.append(row)
-                box.pack_start(row, False, False, 0)
+                row_in_list(lb, row)
+        box.pack_start(card(lb), False, False, 0)
         return box
 
     def on_select(self, lb, row):
-        if row is not None:
-            self.stack.set_visible_child_name(row.page)
+        if row is None or getattr(row, "page", None) is None:
+            return
+        if self.search.get_text().strip():
+            self.search.set_text("")
+        self.stack.set_visible_child_name(row.page)
+        self.revealer.set_reveal_child(row.page in PREVIEW_PAGES)
 
     def on_search(self, entry):
         q = entry.get_text().strip().lower()
@@ -997,23 +1560,39 @@ class SettingsWindow(Gtk.Window):
         for c in self.search_box.get_children():
             c.destroy()
         if not q:
-            row = self.sidebar.get_selected_row() or self.sidebar.get_row_at_index(0)
-            self.stack.set_visible_child_name(row.page)
+            row = self.sidebar.get_selected_row()
+            if row is not None and getattr(row, "page", None):
+                self.stack.set_visible_child_name(row.page)
+                self.revealer.set_reveal_child(row.page in PREVIEW_PAGES)
             return
         cats = dict(C.CATEGORIES)
-        self.search_box.pack_start(heading("Search results", "“%s”" % q), False, False, 0)
+        self.search_box.pack_start(heading("Search results", "Matching “%s”" % q), False, False, 0)
+        lb = settings_list()
         found = 0
         for s in C.SCHEMA:
             hay = " ".join([s.label, s.key, s.help, s.keywords, cats[s.category]]).lower()
             if all(tok in hay for tok in q.split()):
                 row = SettingRow(s, self.store)
                 self.search_rows.append(row)
-                self.search_box.pack_start(row, False, False, 0)
+                row_in_list(lb, row)
                 found += 1
-        if not found:
-            self.search_box.pack_start(Gtk.Label(label="No matching settings."), False, False, 20)
+        if found:
+            self.search_box.pack_start(card(lb), False, False, 0)
+        else:
+            self.search_box.pack_start(label("No matching settings.", "md-empty", xalign=0.5), False, False, 20)
         self.search_box.show_all()
+        self.revealer.set_reveal_child(False)
         self.stack.set_visible_child_name("search")
+
+    def on_key(self, _w, ev):
+        ctrl = ev.state & Gdk.ModifierType.CONTROL_MASK
+        if ctrl and ev.keyval in (Gdk.KEY_f, Gdk.KEY_F):
+            self.search.grab_focus()
+            return True
+        if ev.keyval == Gdk.KEY_Escape and self.search.get_text():
+            self.search.set_text("")
+            return True
+        return False
 
     def refresh_rows(self):
         for r in self.rows + self.search_rows:
@@ -1021,15 +1600,42 @@ class SettingsWindow(Gtk.Window):
 
     def on_saved(self, msg, ok):
         self.status.set_text(msg)
+        self.status.show()
+        if self.status_timer is not None:
+            GLib.source_remove(self.status_timer)
+        self.status_timer = GLib.timeout_add_seconds(4, self._clear_status)
+        return False
+
+    def _clear_status(self):
+        self.status_timer = None
+        self.status.hide()
         return False
 
     def reset_all(self, *_):
         dlg = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
-                                buttons=Gtk.ButtonsType.OK_CANCEL,
+                                buttons=Gtk.ButtonsType.CANCEL,
                                 text="Reset all appearance and behavior settings?")
         dlg.format_secondary_text("Your launchers and per-monitor settings are kept.")
+        dlg.add_button("Reset", Gtk.ResponseType.OK)
+        style(dlg.get_widget_for_response(Gtk.ResponseType.OK), "destructive-action")
         if dlg.run() == Gtk.ResponseType.OK:
             self.store.reset_all_settings()
+        dlg.destroy()
+
+    def show_about(self, *_):
+        dlg = Gtk.AboutDialog(transient_for=self, modal=True)
+        dlg.set_program_name("GlassDock")
+        dlg.set_version(__version__)
+        dlg.set_comments("A floating, macOS-inspired dock for Wayland / Sway / SwayFX.")
+        dlg.set_license_type(Gtk.License.MIT_X11)
+        icon = os.path.join(ROOT, "assets", "glassdock.svg")
+        if os.path.exists(icon):
+            try:
+                from gi.repository import GdkPixbuf
+                dlg.set_logo(GdkPixbuf.Pixbuf.new_from_file_at_size(icon, 96, 96))
+            except Exception:
+                pass
+        dlg.run()
         dlg.destroy()
 
     def on_close(self, *_):
@@ -1037,11 +1643,19 @@ class SettingsWindow(Gtk.Window):
         return False
 
 
-def main():
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    edit_index = None
+    if "--edit" in argv:
+        try:
+            edit_index = int(argv[argv.index("--edit") + 1])
+        except (ValueError, IndexError):
+            print("usage: settings [--edit ITEM_INDEX]", file=sys.stderr)
+            return 2
     if Gdk.Display.get_default() is None:
         print("No display available.", file=sys.stderr)
         return 1
-    SettingsWindow().connect("destroy", Gtk.main_quit)
+    SettingsWindow(edit_index).connect("destroy", Gtk.main_quit)
     Gtk.main()
     return 0
 

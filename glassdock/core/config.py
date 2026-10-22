@@ -285,7 +285,12 @@ def validate_items(items):
             aid = it.get("id")
             if isinstance(aid, str) and aid and aid not in seen_apps:
                 seen_apps.add(aid)
-                out.append({"type": "app", "id": aid})
+                app = {"type": "app", "id": aid}
+                for k, cap in (("name", 100), ("icon", 500)):  # optional user overrides
+                    v = it.get(k)
+                    if isinstance(v, str) and v.strip():
+                        app[k] = v.strip()[:cap]
+                out.append(app)
         elif t == "launcher":
             name, ex = it.get("name"), it.get("exec")
             if isinstance(name, str) and name.strip() and isinstance(ex, str) and ex.strip():

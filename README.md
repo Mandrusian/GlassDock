@@ -1,4 +1,4 @@
-<h1 align="center"><img src="assets/glassdock.svg" alt="GlassDock icon" width="52" align="middle" />&nbsp;GlassDock</h1>
+<h1 align="center"><img src="assets/glassdock.svg" alt="GlassDock app icon" width="56" align="middle" />&nbsp;GlassDock</h1>
 
 <p align="center">A floating, glass-style dock for Wayland desktops.</p>
 
@@ -171,3 +171,19 @@ GlassDock is Python and GTK 3 rather than a native-code application. The build h
 ## License
 
 MIT. See [`LICENSE`](LICENSE). Runtime dependencies are provided by your distribution and are not bundled; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+<!-- rename-feature -->
+## Renaming apps and changing icons
+
+You can give any pinned app a different name or icon without touching its `.desktop` file:
+
+- **In Settings → Launchers:** select a row and press the pencil button, or double-click it.
+- **On the dock:** right-click a pinned icon and choose **Rename / Change Icon…**. Settings opens on that item.
+
+Leave a field empty to keep the app's own value. Custom launchers always had a name and icon field, and they open the same way.
+Customized items are marked "customized" in the list, and **Use app defaults** clears both fields.
+Overrides are stored on the item in `config.json`:
+
+```json
+{"type": "app", "id": "foot.desktop", "name": "Terminal", "icon": "utilities-terminal"}
+```

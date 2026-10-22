@@ -115,8 +115,8 @@ def build_items(cfg_items, entries, windows, show_unpinned=True):
             entry = find_entry(entries, spec["id"])
             if entry is None:
                 continue  # not installed: keep in config, hide from dock
-            items.append(DockItem(key="app:%s" % entry.id, kind="app", name=entry.name,
-                                  icon=entry.icon, entry=entry, cfg_index=idx))
+            items.append(DockItem(key="app:%s" % entry.id, kind="app", name=spec.get("name") or entry.name,
+                                  icon=spec.get("icon") or entry.icon, entry=entry, cfg_index=idx))
             idents.append(entry_identifiers(entry))
         elif t == "launcher":
             try:

@@ -873,6 +873,7 @@ class DockWindow(Gtk.Window):
             sep()
             if item.pinned:
                 add("Remove from Dock", lambda: self.app.unpin(item))
+                add("Rename / Change Icon…", lambda: self.app.edit_item(item))
             elif item.entry is not None:
                 add("Keep in Dock", lambda: self.app.pin(item))
             if item.windows:
@@ -1249,6 +1250,15 @@ class DockApp:
         if new is not None:
             self.cfg["items"] = new
             self.save_cfg()
+
+    def edit_item(self, item):
+        """Open Settings > Launchers with this pinned item's editor showing."""
+        try:
+            pkg = (__package__ or "glassdock").split(".")[0]
+            subprocess.Popen([sys.executable, "-m", pkg + ".settings", "--edit", str(item.cfg_index)],
+                             cwd=ROOT, env=child_env(), start_new_session=True)
+        except OSError as exc:
+            toast("Could not open settings: %s" % exc)
 
     def open_settings(self):
         try:
