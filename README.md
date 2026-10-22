@@ -23,6 +23,18 @@ GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without re
 
 GlassDock does not require GNOME Shell, KDE Plasma, or X11. The dock can be translucent on supported Wayland compositors; **background blur specifically requires SwayFX** and its `layer_effects` support.
 
+## Quick installer
+
+Run the guided installer directly from GitHub:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash
+```
+
+It offers **Install / Upgrade**, **Uninstall**, and **Exit** in a terminal menu (using `whiptail` or `dialog` when available, otherwise a simple prompt). If it detects a ModernDock installation, choosing Install / Upgrade fetches GlassDock and runs its migration-aware installer. Dependencies are optional and only installed if you opt in. Uninstall preserves project directories and settings by default; opting to remove settings creates a backup first.
+
+For a reviewed install, inspect [installer.sh](installer.sh) before running it.
+
 ## Install
 
 Clone the repository and install the runtime dependencies using the helper for your package manager (Fedora, Debian/Ubuntu, Arch, and openSUSE are supported by the script):
