@@ -29,7 +29,7 @@ body {
 a { color: var(--cyan); text-underline-offset: 3px; }
 a:hover { color: #fff; }
 button { font: inherit; cursor: pointer; }
-.wrap { width: min(1000px, calc(100% - 40px)); margin: 0 auto; }
+.wrap { width: min(1080px, calc(100% - 40px)); margin: 0 auto; }
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
   gap: 18px; padding: 17px 0; border-bottom: 1px solid var(--line);
@@ -57,7 +57,7 @@ h1 { margin: 0; font-size: clamp(42px, 7vw, 64px); letter-spacing: -.06em; line-
 .button-quiet { color: #dbeaff; border: 1px solid #48658d; background: transparent; }
 .button-quiet:hover { background: #10284d; color: white; }
 .hero-visual {
-  width: 100%; max-width: 930px; height: 160px; margin: 0 auto;
+  width: 100%; max-width: 1080px; height: 160px; margin: 0 auto;
   position: relative; display: flex; align-items: center; justify-content: center;
 }
 .desktop-backdrop {
@@ -73,7 +73,7 @@ h1 { margin: 0; font-size: clamp(42px, 7vw, 64px); letter-spacing: -.06em; line-
 .line-a { top: 33%; left: 0; right: 27%; }
 .line-b { top: 68%; left: 14%; right: 0; }
 .line-c { top: 48%; left: 42%; right: 11%; opacity: .5; }
-.dock-wrap { position: relative; z-index: 1; width: 100%; padding: 0 3.5%; }
+.dock-wrap { position: relative; z-index: 1; width: 100%; padding: 0; }
 .dock {
   min-height: 112px; width: 100%; display: flex; align-items: center;
   justify-content: space-between; gap: clamp(6px, 1.5vw, 17px);
