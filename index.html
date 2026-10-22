@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2c2924">
+  <meta name="description" content="GlassDock is a customizable, glass-style dock for Wayland desktops, built for Sway and SwayFX.">
+  <meta property="og:title" content="GlassDock — A smoother Wayland desktop">
+  <meta property="og:description" content="A floating, customizable dock for Sway and SwayFX.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="assets/glassdock.svg">
+  <title>GlassDock — A smoother Wayland desktop</title>
+  <link rel="icon" href="assets/glassdock.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/site.css">
+  <script src="assets/site.js" defer></script>
+</head>
+<body>
+  <a class="ribbon" href="https://github.com/Mandrusian/GlassDock" aria-label="GlassDock source on GitHub">Open source ↗</a>
+  <div class="wrap">
+    <header class="topbar">
+      <a class="top-brand" href="#" aria-label="GlassDock home">
+        <img src="assets/glassdock.svg" width="34" height="34" alt="">
+        <span>GlassDock</span>
+      </a>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="#features">Features</a>
+        <a href="#themes">Themes</a>
+        <a href="#resources">Resources</a>
+        <a class="nav-cta" href="https://github.com/Mandrusian/GlassDock">View on GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-brand">
+          <img src="assets/glassdock.svg" width="64" height="64" alt="GlassDock app icon">
+          <h1 id="hero-title">GlassDock</h1>
+        </div>
+        <p class="tagline">A little dock.<br>A smoother desktop.</p>
+        <p class="intro">A floating, customizable dock for Wayland. Pin your apps, follow your workflow, and tune every detail without replacing your desktop environment.</p>
+        <div class="pill-row" aria-label="Project highlights">
+          <span class="pill">Wayland-native</span>
+          <span class="pill">Sway + SwayFX</span>
+          <span class="pill">GTK 3</span>
+          <span class="pill">MIT licensed</span>
+        </div>
+      </section>
+
+      <section class="section" id="install" aria-labelledby="install-title">
+        <h2 class="section-title" id="install-title"><span class="emoji" aria-hidden="true">🚀</span> Install GlassDock</h2>
+        <div class="install-box">
+          <code id="install-command">curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash</code>
+          <button class="copy-btn" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash" aria-label="Copy install command">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg>
+            <span data-copy-label>Copy</span>
+          </button>
+        </div>
+        <p class="small-note">Paste into a terminal to open the guided setup. It offers <strong>Install / Upgrade</strong>, <strong>Uninstall</strong>, and <strong>Exit</strong>. Review the <a href="https://github.com/Mandrusian/GlassDock/blob/master/installer.sh">installer source</a> before running it.</p>
+      </section>
+
+      <section class="section" id="features" aria-labelledby="features-title">
+        <h2 class="section-title" id="features-title"><span class="emoji" aria-hidden="true">🛠️</span> Your desktop, your dock</h2>
+        <p class="section-lede">A focused launcher with thoughtful controls, from first launch to per-monitor details.</p>
+        <div class="grid-2">
+          <div class="copy">
+            <p>GlassDock brings a <strong>macOS-inspired dock feel</strong> to Linux without pretending to be a whole desktop shell. It runs as a Wayland layer-shell surface and is designed around Sway and SwayFX.</p>
+            <div class="feature-list">
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">📌</div>
+                <div><h3>Your favorite apps, close by</h3><p>Pin launchers, group windows by app, and see running-app indicators through Sway IPC.</p></div>
+              </article>
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">✨</div>
+                <div><h3>Fluid by design</h3><p>Hover magnification, smooth animations, launch bounce, app labels, and drag-to-reorder launchers.</p></div>
+              </article>
+              <article class="feature">
+                <div class="feature-icon" aria-hidden="true">⚙️</div>
+                <div><h3>Make it yours</h3><p>Use the settings app to tune color, opacity, borders, shadows, sizing, position, behavior, and monitor overrides.</p></div>
+              </article>
+            </div>
+          </div>
+          <div class="code-stack">
+            <div class="terminal">
+              <div class="window-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="window-title">glassdock · terminal</span></div>
+              <pre><span class="prompt">$</span> glassdock &
+<span class="prompt">$</span> glassdock-settings
+
+<span class="comment"># Check status at any time</span>
+<span class="prompt">$</span> glassdock-ctl status
+
+<span class="comment"># Reload, toggle, or quit</span>
+<span class="prompt">$</span> glassdock-ctl reload
+<span class="prompt">$</span> glassdock-ctl toggle
+<span class="prompt">$</span> glassdock-ctl quit</pre>
+            </div>
+            <div class="code-card">
+              <div class="code-label">Sway keybindings</div>
+              <pre><span class="comment"># Toggle the dock</span>
+bindsym $mod+Ctrl+d exec glassdock-ctl toggle
+
+<span class="comment"># Activate the first dock item</span>
+bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
+            </div>
+            <div class="callout">
+              <p><strong>Good to know:</strong> the dock can be translucent on supported compositors. Real background blur specifically requires <strong>SwayFX</strong> with its `layer_effects` support.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="themes" aria-labelledby="themes-title">
+        <h2 class="section-title" id="themes-title"><span class="emoji" aria-hidden="true">🎨</span> Find your look</h2>
+        <p class="section-lede">Start with a preset, then fine-tune the details in Settings. These swatches represent theme directions.</p>
+        <div class="theme-grid">
+          <div class="theme theme-smoky"><strong>Smoky Glass</strong><span>Soft, translucent contrast</span></div>
+          <div class="theme theme-dark"><strong>Dark</strong><span>Quiet and low-glare</span></div>
+          <div class="theme theme-light"><strong>Light</strong><span>Bright, clean surfaces</span></div>
+          <div class="theme theme-liquid"><strong>Liquid Glass</strong><span>Cool, fluid highlights</span></div>
+          <div class="theme theme-purple"><strong>Purple</strong><span>Rich and atmospheric</span></div>
+          <div class="theme theme-pink"><strong>Pink</strong><span>Warm, playful color</span></div>
+          <div class="theme theme-macos"><strong>macOS-inspired</strong><span>Familiar desktop cues</span></div>
+          <div class="theme theme-custom"><strong>Custom</strong><span>Your own combination</span></div>
+        </div>
+        <p class="small-note">Theme names describe visual styles and inspiration, not exact copies of another operating system's interface.</p>
+      </section>
+
+      <section class="section" aria-labelledby="setup-title">
+        <h2 class="section-title" id="setup-title"><span class="emoji" aria-hidden="true">📦</span> Up and running in minutes</h2>
+        <div class="grid-2">
+          <div class="copy">
+            <p>The guided installer handles the everyday path. Prefer doing it manually? Clone the project and use the bundled scripts.</p>
+            <div class="code-card">
+              <div class="code-label">Manual install</div>
+              <pre><span class="prompt">$</span> git clone https://github.com/Mandrusian/GlassDock.git
+<span class="prompt">$</span> cd GlassDock
+<span class="prompt">$</span> ./scripts/install-deps.sh
+<span class="prompt">$</span> ./install.sh
+<span class="prompt">$</span> ./scripts/run-tests.sh</pre>
+            </div>
+          </div>
+          <div class="copy">
+            <p><strong>What you need</strong></p>
+            <p>A Wayland session with <code>wlr-layer-shell</code>, Python 3.9+, GTK 3, PyGObject, Pycairo, and gtk-layer-shell. Sway or SwayFX is recommended for Sway IPC integration.</p>
+            <p><strong>Your settings stay yours.</strong> Configuration lives in <code>~/.config/glassdock/config.json</code>. The installer runs from the project directory you install, and the uninstaller preserves settings unless you explicitly choose to remove them.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-labelledby="transparency-title">
+        <h2 class="section-title" id="transparency-title"><span class="emoji" aria-hidden="true">🔍</span> Honest by design</h2>
+        <div class="callout">
+          <p>GlassDock is built with <strong>Python + GTK 3 + gtk-layer-shell</strong>. It does not require GNOME Shell, KDE Plasma, or X11. Some compositor-specific behavior can vary, so validate rendering, layer placement, and blur in your own Wayland session. Check the project README for current requirements, limitations, and troubleshooting notes.</p>
+        </div>
+      </section>
+
+      <section class="section" id="resources" aria-labelledby="resources-title">
+        <h2 class="section-title" id="resources-title"><span class="emoji" aria-hidden="true">📚</span> GlassDock resources</h2>
+        <div class="resource-grid">
+          <a class="resource" href="https://github.com/Mandrusian/GlassDock/blob/master/README.md">
+            <h3>Documentation</h3><p>Installation, configuration, keybindings, troubleshooting, and project layout.</p><span class="resource-arrow">Read the README ↗</span>
+          </a>
+          <a class="resource" href="https://github.com/Mandrusian/GlassDock">
+            <h3>Source code</h3><p>Explore the code, follow changes, or clone the repository.</p><span class="resource-arrow">Browse GitHub ↗</span>
+          </a>
+          <a class="resource" href="https://github.com/Mandrusian/GlassDock/issues">
+            <h3>Get help</h3><p>Report a bug or discuss a problem with your compositor or setup.</p><span class="resource-arrow">Open an issue ↗</span>
+          </a>
+          <a class="resource" href="https://github.com/Mandrusian/GlassDock/blob/master/installer.sh">
+            <h3>Guided installer</h3><p>Review the shell installer before running it on your machine.</p><span class="resource-arrow">Inspect installer ↗</span>
+          </a>
+          <a class="resource" href="https://github.com/Mandrusian/GlassDock/blob/master/LICENSE">
+            <h3>MIT license</h3><p>GlassDock is open source. Read the license and reuse terms.</p><span class="resource-arrow">Read the license ↗</span>
+          </a>
+          <a class="resource" href="https://github.com/Mandrusian/GlassDock/graphs/contributors">
+            <h3>Contribute</h3><p>Help improve a small, customizable dock for Wayland.</p><span class="resource-arrow">See contributors ↗</span>
+          </a>
+        </div>
+      </section>
+    </main>
+
+    <div class="rule"></div>
+    <footer class="footer">
+      <p><strong>GlassDock</strong> · A little dock for a more personal desktop.</p>
+      <p>Built for Wayland · Released under the <a href="https://github.com/Mandrusian/GlassDock/blob/master/LICENSE">MIT license</a>.</p>
+      <p>© <span data-year>2026</span> GlassDock contributors · <a href="https://github.com/Mandrusian/GlassDock">GitHub</a></p>
+    </footer>
+  </div>
+</body>
+</html>
