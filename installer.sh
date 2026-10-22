@@ -5,6 +5,7 @@ BRANCH="master"
 BIN="${XDG_BIN_HOME:-$HOME/.local/bin}"
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
+DEST="${GLASSDOCK_INSTALL_DIR:-$DATA/GlassDock}"
 APP="$DATA/applications"
 AUTO="$CONF/autostart"
 TMP=""
@@ -32,48 +33,75 @@ menu() {
  if has_moderndock; then warn "ModernDock detected — install will migrate it to GlassDock."
  elif has_glassdock; then info "Existing GlassDock installation detected."
  else printf 'A floating glass-style dock for Wayland.\n'; fi
- if command -v whiptail >/dev/null 2>&1 && [ -t 0 ] && [ -t 1 ]; then
-  CHOICE="$(whiptail --title 'GlassDock Setup' --menu 'Choose an action' 16 62 3 install 'Install / Upgrade GlassDock' uninstall 'Uninstall GlassDock / ModernDock' quit 'Exit without changes' 3>&1 1>&2 2>&3)" || CHOICE=quit
- elif command -v dialog >/dev/null 2>&1 && [ -t 0 ] && [ -t 1 ]; then
-  CHOICE="$(dialog --title 'GlassDock Setup' --menu 'Choose an action' 16 62 3 install 'Install / Upgrade GlassDock' uninstall 'Uninstall GlassDock / ModernDock' quit 'Exit without changes' 3>&1 1>&2 2>&3)" || CHOICE=quit
- else
+ if command -v whiptail >/dev/null 2>&1 && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  CHOICE="$(whiptail --title 'GlassDock Setup' --menu 'Choose an action' 16 62 3 install 'Install / Upgrade GlassDock' uninstall 'Uninstall GlassDock / ModernDock' quit 'Exit without changes' </dev/tty 3>&1 1>&2 2>&3)" || CHOICE=quit
+ elif command -v dialog >/dev/null 2>&1 && [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  CHOICE="$(dialog --title 'GlassDock Setup' --menu 'Choose an action' 16 62 3 install 'Install / Upgrade GlassDock' uninstall 'Uninstall GlassDock / ModernDock' quit 'Exit without changes' </dev/tty 3>&1 1>&2 2>&3)" || CHOICE=quit
+ elif [ -r /dev/tty ] && [ -w /dev/tty ]; then
   printf '\n  1) Install / Upgrade GlassDock\n  2) Uninstall GlassDock / ModernDock\n  3) Exit\n'
-  if [ ! -t 0 ]; then CHOICE="${GLASSDOCK_ACTION:-install}"; warn "Non-interactive mode: $CHOICE"
-  else read -r -p 'Choose [1-3]: ' a; case "$a" in 1) CHOICE=install;; 2) CHOICE=uninstall;; *) CHOICE=quit;; esac; fi
+  read -r -p 'Choose [1-3]: ' a </dev/tty
+  case "$a" in 1) CHOICE=install;; 2) CHOICE=uninstall;; *) CHOICE=quit;; esac
+ else
+  CHOICE="${GLASSDOCK_ACTION:-}"
+  case "$CHOICE" in install|uninstall|quit) warn "No terminal attached; using GLASSDOCK_ACTION=$CHOICE";;
+   *) die "No interactive terminal was found. Run this from a terminal, or set GLASSDOCK_ACTION=install|uninstall explicitly.";;
+  esac
  fi
 }
 fetch_source() {
- TMP="$(mktemp -d "${TMPDIR:-/tmp}/glassdock-setup.XXXXXX")"
- info "Downloading $REPO…"
+ mkdir -p "$DATA"
+ if [ -e "$DEST" ]; then
+  if ! command -v git >/dev/null 2>&1 || ! git -C "$DEST" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+   die "$DEST already exists and is not a Git checkout. Move it, or set GLASSDOCK_INSTALL_DIR to another path."
+  fi
+  local origin
+  origin="$(git -C "$DEST" remote get-url origin 2>/dev/null || true)"
+  case "$origin" in *github.com/$REPO*) ;; *) die "$DEST is a Git checkout, but its origin is not the GlassDock repository.";; esac
+  if [ -n "$(git -C "$DEST" status --porcelain)" ]; then
+   die "The existing checkout at $DEST has local changes. Commit/stash them or set GLASSDOCK_INSTALL_DIR to a fresh path."
+  fi
+  info "Updating existing GlassDock checkout at $DEST…"
+  git -C "$DEST" fetch --depth 1 origin "$BRANCH"
+  git -C "$DEST" checkout -B "$BRANCH" "origin/$BRANCH"
+  return
+ fi
+ info "Downloading $REPO into persistent directory $DEST…"
  if command -v git >/dev/null 2>&1; then
-  git clone --depth 1 --branch "$BRANCH" "https://github.com/$REPO.git" "$TMP/GlassDock" >&2 || die "Git clone failed."
+  git clone --depth 1 --branch "$BRANCH" "https://github.com/$REPO.git" "$DEST" >&2 || die "Git clone failed."
  else
   command -v curl >/dev/null 2>&1 || die "Install git or curl first."
-  curl -fLsS "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o "$TMP/source.tar.gz"
+  TMP="$(mktemp -d "${TMPDIR:-/tmp}/glassdock-setup.XXXXXX")"
+  curl -fLsS "https://github.com/$REPO/archive/refs/heads/$BRANCH.tar.gz" -o "$TMP/source.tar.gz" || die "Download failed."
   mkdir "$TMP/unpack"; tar -xzf "$TMP/source.tar.gz" -C "$TMP/unpack"
-  mv "$TMP/unpack/GlassDock-$BRANCH" "$TMP/GlassDock"
+  local src
+  src="$(find "$TMP/unpack" -mindepth 1 -maxdepth 1 -type d -name 'GlassDock-*' -print -quit)"
+  [ -n "$src" ] || die "The downloaded archive did not contain the expected GlassDock source folder."
+  mv "$src" "$DEST"
  fi
 }
 install_dock() {
  fetch_source
- local root="$TMP/GlassDock"
+ local root="$DEST"
  if has_moderndock; then
-  printf '\nModernDock detected. The GlassDock installer replaces old command links and launchers; settings are preserved for migration.\n'
+  printf '\nModernDock detected. GlassDock will replace the old command links and launchers; settings will be preserved for migration.\n'
  fi
  local deps=n
- if [ -t 0 ]; then read -r -p 'Install system dependencies too? (may use sudo) [y/N]: ' deps
- else deps="${GLASSDOCK_INSTALL_DEPS:-n}"; fi
- [[ "$deps" =~ ^[Yy]$ ]] && "$root/scripts/install-deps.sh"
+ if [ -r /dev/tty ] && [ -w /dev/tty ]; then
+  read -r -p 'Install system dependencies too? (may use sudo) [y/N]: ' deps </dev/tty
+ else
+  deps="${GLASSDOCK_INSTALL_DEPS:-n}"
+ fi
+ if [[ "$deps" =~ ^[Yy]$ ]]; then "$root/scripts/install-deps.sh"; fi
  info "Checking dependencies and installing…"
  "$root/scripts/install.sh"
- ok "GlassDock installed."
+ ok "GlassDock installed in $root."
  printf '\nStart:    glassdock &\nSettings: glassdock-settings\nStatus:   glassdock-ctl status\n'
 }
 uninstall_dock() {
  if ! has_glassdock && ! has_moderndock; then warn "No obvious installation detected."; fi
  printf '\nThis removes known command links and launchers; project folders are not deleted.\n'
  local purge=n
- if [ -t 0 ]; then read -r -p 'Also remove saved settings after making backups? [y/N]: ' purge
+ if [ -r /dev/tty ] && [ -w /dev/tty ]; then read -r -p 'Also remove saved settings after making backups? [y/N]: ' purge </dev/tty
  else purge="${GLASSDOCK_PURGE_CONFIG:-n}"; fi
  for name in glassdock glassdock-ctl glassdock-settings moderndock moderndock-ctl moderndock-settings; do
   target="$BIN/$name"
@@ -83,7 +111,7 @@ uninstall_dock() {
   fi
  done
  rm -f -- "$APP/glassdock-settings.desktop" "$APP/moderndock-settings.desktop" "$AUTO/glassdock.desktop" "$AUTO/moderndock.desktop"
- for root in "$HOME/GlassDock" "$HOME/ModernDock"; do
+ for root in "$DEST" "$HOME/GlassDock" "$HOME/ModernDock"; do
   if [ -x "$root/scripts/uninstall.sh" ]; then "$root/scripts/uninstall.sh" || true; fi
  done
  if [[ "$purge" =~ ^[Yy]$ ]]; then
