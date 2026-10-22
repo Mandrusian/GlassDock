@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/glassdock.svg" alt="GlassDock" width="160">
+  <img src="assets/glassdock.svg" alt="GlassDock" width="300">
 </p>
 
 # ModernDock
