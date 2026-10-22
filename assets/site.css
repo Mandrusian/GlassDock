@@ -126,6 +126,7 @@ h1 span { color: var(--color-accent-strong); }
   height: clamp(300px, 34vw, 400px); isolation: isolate;
   perspective: 800px; transform-style: preserve-3d;
 }
+.parallax-layer { translate: var(--parallax-x, 0px) var(--parallax-y, 0px); }
 .art-plane {
   position: absolute; inset: 11% 1% 7% 5%; border-radius: 50% 41% 46% 38%;
   background: #0a2a55;
@@ -188,6 +189,8 @@ h1 span { color: var(--color-accent-strong); }
   font-size: 11px; font-weight: 700; transition: background var(--motion-fast);
 }
 .copy-button:hover { background: var(--color-surface-hover); }
+.copy-button.is-success { border-color: #80c8a9; color: #c8f4dc; }
+.copy-button:disabled { cursor: default; opacity: .8; }
 .copy-button svg { width: 14px; height: 14px; }
 .command-foot {
   display: flex; align-items: center; gap: 7px; padding: 9px 13px;
