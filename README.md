@@ -1,4 +1,4 @@
-<h1 align="center"><img src="assets/glassdock.svg" alt="GlassDock icon" width="52" align="middle" />&nbsp;GlassDock</h1>
+<h1 align="center"><img src="assets/glassdock.svg" alt="GlassDock app icon" width="56" align="middle" />&nbsp;GlassDock</h1>
 
 <p align="center">A floating, glass-style dock for Wayland desktops.</p>
 
