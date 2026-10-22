@@ -187,3 +187,8 @@ GlassDock is Python and GTK 3 rather than a native-code application. The build h
 ## License
 
 MIT. See [`LICENSE`](LICENSE). Runtime dependencies are provided by your distribution and are not bundled; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+## Extras
+
+- [GlassIcon Studio](extras/GlassIcon/README.md) — change icon themes, application launcher icons, and file-manager icons.
+
