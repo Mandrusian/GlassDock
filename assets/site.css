@@ -118,8 +118,12 @@ h1 span { color: var(--color-accent-strong); }
 }
 .button-primary { color: var(--color-accent-ink); background: var(--color-accent); }
 .button-primary:hover { color: var(--color-accent-ink); background: #fff; }
+.button-primary:active { background: #bddfff; }
+.button:focus-visible, .copy-button:focus-visible { outline: 2px solid #d4ebff; outline-offset: 3px; }
+.button:disabled, .copy-button:disabled { cursor: wait; opacity: .72; }
 .button-secondary { color: var(--color-text); border-color: var(--color-border-strong); background: transparent; }
 .button-secondary:hover { color: white; background: var(--color-surface); border-color: #7194c0; }
+.button-secondary:active { background: #17365f; }
 .hero-note { margin: 20px 0 0; color: var(--color-text-tertiary); font-size: 11px; letter-spacing: .025em; }
 .hero-art {
   position: relative; display: grid; place-items: center;
@@ -189,6 +193,9 @@ h1 span { color: var(--color-accent-strong); }
   font-size: 11px; font-weight: 700; transition: background var(--motion-fast);
 }
 .copy-button:hover { background: var(--color-surface-hover); }
+.copy-button:active { background: #1b3d6b; }
+.copy-button.is-success { color: #c9f2dc; border-color: #5ca981; }
+.copy-button.is-error { color: #ffd2d2; border-color: #c76e7d; }
 .copy-button.is-success { border-color: #80c8a9; color: #c8f4dc; }
 .copy-button:disabled { cursor: default; opacity: .8; }
 .copy-button svg { width: 14px; height: 14px; }
