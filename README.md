@@ -31,7 +31,7 @@ Run the guided installer directly from GitHub:
 curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash
 ```
 
-It offers **Install / Upgrade**, **Uninstall**, and **Exit** in a terminal menu (using `whiptail` or `dialog` when available, otherwise a simple prompt). If it detects a ModernDock installation, choosing Install / Upgrade fetches GlassDock and runs its migration-aware installer. Dependencies are optional and only installed if you opt in. Uninstall preserves project directories and settings by default; opting to remove settings creates a backup first.
+It reads choices from your terminal even when launched with `curl | bash`, using `whiptail` or `dialog` when available and a simple prompt otherwise. Install / Upgrade downloads the project into `~/.local/share/GlassDock` (or `$XDG_DATA_HOME/GlassDock`) so command links never point into a temporary directory. If it detects ModernDock, the existing migration-aware installer replaces the old links and launchers while preserving settings. Dependencies are optional and only installed if you opt in. Uninstall preserves project directories and settings by default; opting to remove settings creates a backup first. Without a terminal, the installer exits safely unless you explicitly set `GLASSDOCK_ACTION=install` or `GLASSDOCK_ACTION=uninstall`.
 
 For a reviewed install, inspect [installer.sh](installer.sh) before running it.
 
