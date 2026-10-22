@@ -7,7 +7,6 @@ on:
       - "index.html"
       - "README.md"
       - "installer.sh"
-      - "scripts/publish-wiki.sh"
       - "extras/GlassIcon/install.sh"
       - "extras/GlassIcon/uninstall.sh"
       - "assets/site.css"
@@ -38,7 +37,6 @@ jobs:
       - name: Validate installer shell scripts
         run: |
           bash -n installer.sh
-          bash -n scripts/publish-wiki.sh
           bash -n extras/GlassIcon/install.sh
           bash -n extras/GlassIcon/uninstall.sh
 
