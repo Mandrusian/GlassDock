@@ -1,16 +1,17 @@
 (() => {
-  const copyButtons = document.querySelectorAll("[data-copy]");
+  "use strict";
 
+  const copyButtons = document.querySelectorAll("[data-copy]");
   copyButtons.forEach((button) => {
     button.addEventListener("click", async () => {
       const value = button.getAttribute("data-copy");
       const label = button.querySelector("[data-copy-label]");
       if (!value || button.disabled) return;
 
-      const original = label ? label.textContent : button.textContent;
+      const original = label ? label.textContent : "Copy";
       button.disabled = true;
       button.setAttribute("aria-busy", "true");
-      button.classList.remove("is-error", "is-success");
+      button.classList.remove("is-success", "is-error");
       if (label) label.textContent = "Copying…";
 
       try {
@@ -22,7 +23,6 @@
           field.setAttribute("readonly", "");
           field.setAttribute("aria-hidden", "true");
           field.style.position = "fixed";
-          field.style.top = "0";
           field.style.left = "-9999px";
           document.body.appendChild(field);
           field.select();
@@ -36,12 +36,12 @@
         button.classList.add("is-success");
         window.setTimeout(() => {
           if (label) label.textContent = original;
-          button.setAttribute("aria-label", "Copy GlassDock install command");
+          button.setAttribute("aria-label", "Copy GlassDock installation command");
           button.classList.remove("is-success");
           button.removeAttribute("aria-busy");
           button.disabled = false;
-        }, 1400);
-      } catch (error) {
+        }, 1300);
+      } catch {
         if (label) label.textContent = "Copy failed";
         button.setAttribute("aria-label", "Copy failed. Select the command and copy it manually.");
         button.classList.add("is-error");
@@ -49,7 +49,7 @@
         button.disabled = false;
         window.setTimeout(() => {
           if (label) label.textContent = original;
-          button.setAttribute("aria-label", "Copy GlassDock install command");
+          button.setAttribute("aria-label", "Copy GlassDock installation command");
           button.classList.remove("is-error");
         }, 1800);
       }
@@ -65,17 +65,15 @@
   const finePointer = window.matchMedia("(hover: hover) and (pointer: fine)");
   let pointerX = 0;
   let pointerY = 0;
-  let scrollOffset = 0;
+  let scrollY = 0;
   let frame = 0;
 
   const renderParallax = () => {
     frame = 0;
     layers.forEach((layer) => {
       const depth = Number(layer.dataset.depth || 0);
-      const x = pointerX * depth * 34;
-      const y = pointerY * depth * 24 + scrollOffset * depth * -0.4;
-      layer.style.setProperty("--parallax-x", `${x.toFixed(2)}px`);
-      layer.style.setProperty("--parallax-y", `${y.toFixed(2)}px`);
+      layer.style.setProperty("--parallax-x", `${(pointerX * depth * 26).toFixed(2)}px`);
+      layer.style.setProperty("--parallax-y", `${(pointerY * depth * 18 + scrollY * depth * 0.12).toFixed(2)}px`);
     });
   };
 
@@ -83,7 +81,7 @@
     if (!frame) frame = window.requestAnimationFrame(renderParallax);
   };
 
-  const resetParallax = () => {
+  const resetPointer = () => {
     pointerX = 0;
     pointerY = 0;
     scheduleParallax();
@@ -93,15 +91,17 @@
     if (finePointer.matches) {
       art.addEventListener("pointermove", (event) => {
         const bounds = art.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
         pointerX = ((event.clientX - bounds.left) / bounds.width - 0.5) * 2;
         pointerY = ((event.clientY - bounds.top) / bounds.height - 0.5) * 2;
         scheduleParallax();
       });
-      art.addEventListener("pointerleave", resetParallax);
+      art.addEventListener("pointerleave", resetPointer);
     }
 
     window.addEventListener("scroll", () => {
-      scrollOffset = Math.max(-100, Math.min(100, window.scrollY - art.getBoundingClientRect().top - window.scrollY));
+      const bounds = art.getBoundingClientRect();
+      scrollY = Math.max(-80, Math.min(80, window.innerHeight / 2 - (bounds.top + bounds.height / 2)));
       scheduleParallax();
     }, { passive: true });
 
@@ -109,7 +109,7 @@
       if (event.matches) {
         pointerX = 0;
         pointerY = 0;
-        scrollOffset = 0;
+        scrollY = 0;
         layers.forEach((layer) => {
           layer.style.removeProperty("--parallax-x");
           layer.style.removeProperty("--parallax-y");
