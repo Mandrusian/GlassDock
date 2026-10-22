@@ -130,7 +130,7 @@ bindsym $mod+Ctrl+d exec glassdock-ctl toggle
 bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
             </div>
             <div class="glass-panel callout">
-              <p><strong>A transparent note on blur:</strong> GlassDock can be translucent on supported compositors. Real background blur specifically requires <strong>SwayFX</strong> and its <code>layer_effects</code> support.</p>
+              <p><strong>Two different things:</strong> On the dock itself, SwayFX provides desktop background blur through <code>layer_effects</code>. On this page, Chromium uses an SVG displacement map to bend the background through the glass edges; Safari and Firefox fall back to a lighter frosted material.</p>
             </div>
           </div>
         </div>
@@ -229,6 +229,7 @@ bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
     <footer class="footer">
       <p><strong>GlassDock</strong> · Your workspace, in a better light.</p>
       <p>Built for Wayland · Released under the <a href="https://github.com/Mandrusian/GlassDock/blob/master/LICENSE">MIT license</a>.</p>
+      <p>Web refraction adapted from <a href="https://github.com/ccl125/liquid-glass">ccl125/liquid-glass</a> under MIT.</p>
       <p>© <span data-year>2026</span> GlassDock contributors · <a href="https://github.com/Mandrusian/GlassDock">GitHub</a></p>
     </footer>
   </div>
