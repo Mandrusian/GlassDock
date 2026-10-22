@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#070a12">
+  <meta name="theme-color" content="#073b8c">
   <meta name="description" content="GlassDock is a customizable, liquid-glass-inspired dock for Wayland desktops, built for Sway and SwayFX.">
   <meta property="og:title" content="GlassDock — Your desktop, in flow">
   <meta property="og:description" content="A floating, customizable dock for Sway and SwayFX.">
@@ -62,7 +62,7 @@
               <div class="dock-app"><div class="app-icon icon-web"><span>◎</span></div><span class="app-caption">Browser</span><i class="dock-indicator"></i></div>
               <div class="dock-app"><div class="app-icon icon-code"><span>&lt;/&gt;</span></div><span class="app-caption">Code</span><i class="dock-indicator"></i></div>
               <div class="dock-app"><div class="app-icon icon-music"><span>♫</span></div><span class="app-caption">Music</span></div>
-              <div class="dock-app"><div class="app-icon icon-settings"><span>⚙</span></div><span class="app-caption">Settings</span></div>
+              <div class="dock-app"><div class="app-icon icon-settings"><span>⌘</span></div><span class="app-caption">Settings</span></div>
             </div>
           </div>
           <div class="visual-caption">Translucent layers · subtle light · your favorite apps</div>
@@ -141,16 +141,72 @@ bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
         <h2 class="section-title" id="themes-title">A little atmosphere goes a long way.</h2>
         <p class="section-lede">Choose a visual direction, then make the color, depth, borders, and details your own.</p>
         <div class="theme-grid">
-          <div class="theme theme-smoky"><strong>Smoky Glass</strong><span>Soft, smoky depth</span></div>
-          <div class="theme theme-dark"><strong>Dark</strong><span>Low-key contrast</span></div>
-          <div class="theme theme-light"><strong>Light</strong><span>Bright and minimal</span></div>
-          <div class="theme theme-liquid"><strong>Liquid Glass</strong><span>Refraction-inspired color</span></div>
-          <div class="theme theme-purple"><strong>Purple</strong><span>Deep atmospheric hues</span></div>
-          <div class="theme theme-pink"><strong>Pink</strong><span>Soft vivid accents</span></div>
-          <div class="theme theme-macos"><strong>macOS-inspired</strong><span>Familiar floating cues</span></div>
-          <div class="theme theme-custom"><strong>Custom</strong><span>Tune it yourself</span></div>
+          <article class="theme-card scene-blue">
+            <div class="theme-scene">
+              <span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><span class="liquid-orb orb-three"></span>
+              <div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div>
+              <div class="scene-glint"></div>
+            </div>
+            <div class="theme-copy"><strong>GlassDock Blue</strong><span>Clear blue glass · luminous edges</span></div>
+          </article>
+          <article class="theme-card scene-smoky">
+            <div class="theme-scene">
+              <span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span>
+              <div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app active">⌘</span><span class="mini-app">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div>
+              <div class="scene-glint"></div>
+            </div>
+            <div class="theme-copy"><strong>Smoky Glass</strong><span>Soft diffusion · quiet contrast</span></div>
+          </article>
+          <article class="theme-card scene-midnight">
+            <div class="theme-scene">
+              <span class="liquid-orb orb-one"></span><span class="liquid-orb orb-three"></span>
+              <div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div>
+              <div class="scene-glint"></div>
+            </div>
+            <div class="theme-copy"><strong>Midnight</strong><span>Deep tint · bright specular rims</span></div>
+          </article>
+          <article class="theme-card scene-clear">
+            <div class="theme-scene">
+              <span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><span class="liquid-orb orb-three"></span>
+              <div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app active">⌘</span><span class="mini-app">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div>
+              <div class="scene-glint"></div>
+            </div>
+            <div class="theme-copy"><strong>Liquid Clear</strong><span>High translucency · refracted color</span></div>
+          </article>
+          <article class="theme-card scene-pearl">
+            <div class="theme-scene">
+              <span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span>
+              <div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div>
+              <div class="scene-glint"></div>
+            </div>
+            <div class="theme-copy"><strong>Pearl</strong><span>Milky glass · soft silver light</span></div>
+          </article>
+          <article class="theme-card scene-violet">
+            <div class="theme-scene">
+              <span class="liquid-orb orb-one"></span><span class="liquid-orb orb-three"></span>
+              <div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div>
+              <div class="scene-glint"></div>
+            </div>
+            <div class="theme-copy"><strong>Violet Prism</strong><span>Cool lilac spill · polished depth</span></div>
+          </article>
+          <article class="theme-card scene-macos">
+            <div class="theme-scene">
+              <span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span>
+              <div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app active">⌘</span><span class="mini-app">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div>
+              <div class="scene-glint"></div>
+            </div>
+            <div class="theme-copy"><strong>macOS-inspired</strong><span>Floating controls · gentle blur</span></div>
+          </article>
+          <article class="theme-card scene-custom">
+            <div class="theme-scene">
+              <span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><span class="liquid-orb orb-three"></span>
+              <div class="mini-glass-dock"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div>
+              <div class="scene-glint"></div>
+            </div>
+            <div class="theme-copy"><strong>Custom</strong><span>Make the material your own</span></div>
+          </article>
         </div>
-        <p class="small-note">These are style previews for the available theme directions, not screenshots of a running desktop.</p>
+        <p class="small-note">Concept previews inspired by real glass optics: layered translucency, edge reflections, soft refraction and color drawn from the blue environment.</p>
       </section>
 
       <section class="section" aria-labelledby="setup-title">
