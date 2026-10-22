@@ -7,20 +7,6 @@
 <p align="center"><a href="https://mandrusian.github.io/GlassDock/">Project website ↗</a> · <a href="https://github.com/Mandrusian/GlassDock">Source code</a></p>
 
 
-## Documentation
-
-The [GlassDock GitHub Wiki](https://github.com/Mandrusian/GlassDock/wiki) covers installation, configuration, commands, troubleshooting, GlassIcon Studio, and development. The Markdown source lives in [`docs/wiki/`](docs/wiki/).
-
-To publish the source pages to the actual GitHub Wiki, first create and save an initial [Home page](https://github.com/Mandrusian/GlassDock/wiki/_new) if the Wiki has never been initialized. Then, from a local checkout with GitHub write access, run:
-
-```bash
-bash scripts/publish-wiki.sh
-```
-
-The script pushes the pages and a navigation sidebar to the separate `GlassDock.wiki.git` repository.
-
----
-
 GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without replacing your compositor or desktop shell.
 
 - **Launchers and running apps** — pin applications, group their windows, and see running-app indicators through Sway IPC.
