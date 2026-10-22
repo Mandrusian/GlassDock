@@ -6,8 +6,6 @@
 
 <p align="center"><a href="https://mandrusian.github.io/GlassDock/">Project website ↗</a> · <a href="https://github.com/Mandrusian/GlassDock">Source code</a></p>
 
-> **First-time Pages setup:** In the repository, open **Settings → Pages** and set **Source** to **GitHub Actions**. Then rerun the Pages workflow if its first run failed before Pages was enabled.
-
 ---
 
 GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without replacing your compositor or desktop shell.
