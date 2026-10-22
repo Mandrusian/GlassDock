@@ -1,0 +1,53 @@
+/* Base refraction lens from ccl125/liquid-glass (MIT); GlassDock blue material overrides follow. See LICENSE.ccl125. */
+/**
+ * liquid-glass.css
+ *
+ * Base styles for the liquid glass effect. The fallback is a frosted-glass
+ * blur; browsers that support SVG filter references in backdrop-filter
+ * (Chromium) are upgraded to a pure refraction lens — no blur, crisper.
+ *
+ * The class is intentionally minimal: no border-radius, no layout rules.
+ * Override `background`, `box-shadow`, etc. in your own stylesheet.
+ */
+
+.liquid-glass {
+  /* Semi-transparent white tint. Override to taste (e.g. rgba(0,0,0,0.2)
+     on dark themes). Keep it translucent or the backdrop won't show. */
+  background: rgba(255, 255, 255, 0.15);
+
+  /* Fallback: frosted glass (Safari, Firefox). */
+  backdrop-filter: blur(12px) saturate(1.5);
+  -webkit-backdrop-filter: blur(12px) saturate(1.5);
+
+  /* Inset white highlights fake the reflection on a curved glass edge;
+     the soft outer drop shadow gives a floating feel. */
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.6),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.25),
+    0 2px 12px rgba(0, 0, 0, 0.05);
+}
+
+/* Chromium only: replace the blur with the refraction lens filter.
+   The saturate boost is baked into the SVG filter itself (see core.js). */
+@supports (backdrop-filter: url("#liquid-glass")) {
+  .liquid-glass {
+    backdrop-filter: url("#liquid-glass");
+    /* Safari never enters this block; keep the prefixed fallback for it. */
+    -webkit-backdrop-filter: blur(12px) saturate(1.5);
+  }
+}
+
+/* GlassDock material tint */
+.liquid-glass {
+  background: linear-gradient(135deg, rgba(196, 230, 255, .20), rgba(116, 177, 240, .095) 48%, rgba(173, 177, 255, .09));
+  border: 1px solid rgba(226, 243, 255, .47);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.68),
+    inset 0 -1px 0 rgba(255,255,255,.16),
+    0 12px 34px rgba(1,12,38,.22);
+}
+@supports (backdrop-filter: url("#liquid-glass")) {
+  .liquid-glass {
+    backdrop-filter: url("#liquid-glass");
+  }
+}

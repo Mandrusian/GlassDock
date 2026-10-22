@@ -4,6 +4,21 @@
 
 <p align="center">Built with Python, GTK 3 and gtk-layer-shell. Designed for Sway and SwayFX, with a graphical settings app and per-monitor customization.</p>
 
+<p align="center"><a href="https://mandrusian.github.io/GlassDock/">Project website ↗</a> · <a href="https://github.com/Mandrusian/GlassDock">Source code</a></p>
+
+
+## Documentation
+
+The [GlassDock GitHub Wiki](https://github.com/Mandrusian/GlassDock/wiki) covers installation, configuration, commands, troubleshooting, GlassIcon Studio, and development. The Markdown source lives in [`docs/wiki/`](docs/wiki/).
+
+To publish the source pages to the actual GitHub Wiki, first create and save an initial [Home page](https://github.com/Mandrusian/GlassDock/wiki/_new) if the Wiki has never been initialized. Then, from a local checkout with GitHub write access, run:
+
+```bash
+bash scripts/publish-wiki.sh
+```
+
+The script pushes the pages and a navigation sidebar to the separate `GlassDock.wiki.git` repository.
+
 ---
 
 GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without replacing your compositor or desktop shell.
@@ -22,6 +37,36 @@ GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without re
 - Sway or SwayFX is recommended. Sway IPC is used for window and running-application information.
 
 GlassDock does not require GNOME Shell, KDE Plasma, or X11. The dock can be translucent on supported Wayland compositors; **background blur specifically requires SwayFX** and its `layer_effects` support.
+
+## Quick installer
+
+Run the guided installer directly from GitHub:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash
+```
+
+It reads choices from your terminal even when launched with `curl | bash`, using `whiptail` or `dialog` when available and a simple prompt otherwise. Choose **Install / Upgrade GlassDock**, **Install / Upgrade GlassIcon Studio**, **Uninstall GlassDock / ModernDock**, **Uninstall GlassIcon Studio**, or **Exit**. The source checkout is kept in `~/.local/share/GlassDock` (or `$XDG_DATA_HOME/GlassDock`) so installed command links never point into a temporary directory. If it detects ModernDock, the existing migration-aware installer replaces the old dock links and launchers while preserving settings. Dependencies are optional and only installed if you opt in. Uninstall preserves project directories and user settings by default. Without a terminal, the installer exits safely unless you set `GLASSDOCK_ACTION` explicitly.
+
+For a reviewed install, inspect [installer.sh](installer.sh) before running it.
+
+## Companion app: GlassIcon Studio
+
+GlassIcon Studio lives in [`extras/GlassIcon/`](extras/GlassIcon/) and complements the dock by managing icon themes, per-application launcher icons, and user-level file-manager/system icon overrides. It is built with Python and GTK 3, and does not need a background service.
+
+Install it from the repository root:
+
+```bash
+./extras/GlassIcon/install.sh
+```
+
+Add `--deps` to install its required system packages too (this may use `sudo`):
+
+```bash
+./extras/GlassIcon/install.sh --deps
+```
+
+Launch it with `glassicon`. Its settings and icon backups are kept in user directories. The main guided installer also offers install/upgrade and uninstall actions for GlassIcon Studio. See the [GlassIcon documentation](extras/GlassIcon/README.md) for its features, requirements, and limitations.
 
 ## Install
 
@@ -157,7 +202,8 @@ The project directory is not deleted by the uninstaller; remove it yourself afte
 ## Project layout
 
 ```text
-assets/       GlassDock icon
+assets/       GlassDock icon and website assets
+extras/       Optional companion tools, including GlassIcon Studio
 bin/          glassdock, glassdock-settings, glassdock-ctl launchers
 glassdock/    GTK dock, settings app, CLI, and core modules
 scripts/      dependency, build, install, uninstall, Sway integration, and test helpers
@@ -172,18 +218,7 @@ GlassDock is Python and GTK 3 rather than a native-code application. The build h
 
 MIT. See [`LICENSE`](LICENSE). Runtime dependencies are provided by your distribution and are not bundled; see [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
-<!-- rename-feature -->
-## Renaming apps and changing icons
+## Extras
 
-You can give any pinned app a different name or icon without touching its `.desktop` file:
+- [GlassIcon Studio](extras/GlassIcon/README.md) — change icon themes, application launcher icons, and file-manager icons.
 
-- **In Settings → Launchers:** select a row and press the pencil button, or double-click it.
-- **On the dock:** right-click a pinned icon and choose **Rename / Change Icon…**. Settings opens on that item.
-
-Leave a field empty to keep the app's own value. Custom launchers always had a name and icon field, and they open the same way.
-Customized items are marked "customized" in the list, and **Use app defaults** clears both fields.
-Overrides are stored on the item in `config.json`:
-
-```json
-{"type": "app", "id": "foot.desktop", "name": "Terminal", "icon": "utilities-terminal"}
-```
