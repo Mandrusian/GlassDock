@@ -14,7 +14,7 @@ The [GlassDock GitHub Wiki](https://github.com/Mandrusian/GlassDock/wiki) covers
 To publish the source pages to the actual GitHub Wiki, first create and save an initial [Home page](https://github.com/Mandrusian/GlassDock/wiki/_new) if the Wiki has never been initialized. Then, from a local checkout with GitHub write access, run:
 
 ```bash
-./scripts/publish-wiki.sh
+bash scripts/publish-wiki.sh
 ```
 
 The script pushes the pages and a navigation sidebar to the separate `GlassDock.wiki.git` repository.
