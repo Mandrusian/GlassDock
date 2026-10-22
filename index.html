@@ -3,10 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#071a43">
-  <meta name="description" content="GlassDock is a customizable, liquid-glass-inspired dock for Wayland desktops, built for Sway and SwayFX.">
-  <meta property="og:title" content="GlassDock — Your desktop, in flow">
-  <meta property="og:description" content="A floating, customizable dock for Sway and SwayFX.">
+  <meta name="theme-color" content="#061735">
+  <meta name="description" content="A customizable dock for Sway and SwayFX, with GlassIcon Studio for icon themes and app icons.">
+  <meta property="og:title" content="GlassDock — A dock for Wayland">
+  <meta property="og:description" content="A customizable Wayland dock for Sway and SwayFX.">
   <meta property="og:type" content="website">
   <meta property="og:image" content="assets/glassdock.svg">
   <title>GlassDock — Your desktop, in flow</title>
@@ -33,16 +33,16 @@
 
     <main>
       <section class="hero" aria-labelledby="hero-title">
-        <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> A Wayland dock, with a softer edge</div>
+        <div class="eyebrow"><span class="status-dot" aria-hidden="true"></span> For Wayland · Sway · SwayFX</div>
         <div class="hero-brand">
           <img src="assets/glassdock.svg" width="67" height="67" alt="GlassDock app icon">
           <h1 id="hero-title" class="headline-shine">GlassDock</h1>
         </div>
-        <p class="tagline">Your workspace.<br>In a better light.</p>
-        <p class="intro">A floating dock for Wayland that feels at home on your desktop. Keep your favorite apps close, bring a little motion to your workflow, and tune the details until they feel just right.</p>
+        <p class="tagline">A dock for your Wayland desktop.</p>
+        <p class="intro">Pin your apps, track open windows, and tune the position, animation, and appearance from the GTK settings app.</p>
         <div class="hero-actions">
-          <a class="button button-primary" href="#install">Get GlassDock <span aria-hidden="true">↓</span></a>
-          <a class="button button-quiet" href="https://github.com/Mandrusian/GlassDock">Explore the source <span aria-hidden="true">↗</span></a>
+          <a class="button button-primary" href="#install">Install GlassDock <span aria-hidden="true">↓</span></a>
+          <a class="button button-quiet" href="https://github.com/Mandrusian/GlassDock">Source code <span aria-hidden="true">↗</span></a>
         </div>
 
         <div class="hero-visual" role="img" aria-label="GlassDock running on a blue desktop, with app icons inside its long translucent dock">
@@ -69,10 +69,10 @@
       </section>
 
       <section class="section" id="install" aria-labelledby="install-title">
-        <h2 class="section-title" id="install-title">A fresh dock is one command away.</h2>
-        <p class="section-lede">Start with the guided setup. Keep it simple, or customize every corner.</p>
+        <h2 class="section-title" id="install-title">Install GlassDock</h2>
+        <p class="section-lede">Run the setup and choose GlassDock or GlassIcon Studio.</p>
         <div class="glass-panel install-panel">
-          <div class="install-box liquid-glass">
+          <div class="install-box">
             <code id="install-command">curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash</code>
             <button class="copy-btn" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash" aria-label="Copy install command">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"></path></svg>
@@ -84,8 +84,8 @@
       </section>
 
       <section class="section" id="features" aria-labelledby="features-title">
-        <h2 class="section-title" id="features-title">Thoughtful details. Your kind of flow.</h2>
-        <p class="section-lede">The dock stays out of your way until you need it, then makes everyday interactions feel a little more alive.</p>
+        <h2 class="section-title" id="features-title">Features</h2>
+        <p class="section-lede">The everyday essentials: launchers, running-app indicators, positioning, and controls.</p>
         <div class="grid-2">
           <div class="copy">
             <div class="feature-list">
@@ -138,7 +138,7 @@ bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
 
       <section class="section" id="glassicon" aria-labelledby="glassicon-title">
         <h2 class="section-title" id="glassicon-title">GlassIcon Studio</h2>
-        <p class="section-lede">A companion tool for the details outside the dock.</p>
+        <p class="section-lede">A companion app for themes, launcher icons, and file-manager icons.</p>
         <div class="grid-2">
           <div class="copy">
             <p>Manage icon themes, change individual application launcher icons, and add user-level folder, Home, Trash, drive, and file-type icons. GlassIcon is built with Python and GTK 3, and keeps changes in your user profile.</p>
@@ -162,8 +162,8 @@ bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
       </section>
 
       <section class="section" id="themes" aria-labelledby="themes-title">
-        <h2 class="section-title" id="themes-title">A little atmosphere goes a long way.</h2>
-        <p class="section-lede">Choose a visual direction, then make the color, depth, borders, and details your own.</p>
+        <h2 class="section-title" id="themes-title">Themes</h2>
+        <p class="section-lede">Preview the included styles. Fine-tune colors, opacity, borders, and shadows in Settings.</p>
         <div class="theme-grid">
           <article class="theme-card scene-smoky">
             <div class="theme-scene"><div class="scene-lines"></div><span class="liquid-orb orb-one"></span><span class="liquid-orb orb-two"></span><span class="liquid-orb orb-three"></span><div class="mini-glass-dock liquid-glass"><span class="mini-app">⌂</span><span class="mini-app">⌘</span><span class="mini-app active">◈</span><span class="mini-app">⌕</span><span class="mini-app">⊙</span></div><div class="scene-glint"></div></div>
@@ -202,8 +202,8 @@ bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
       </section>
 
       <section class="section" aria-labelledby="setup-title">
-        <h2 class="section-title" id="setup-title">Under the glass.</h2>
-        <p class="section-lede">A small, transparent project built on familiar Linux desktop technologies.</p>
+        <h2 class="section-title" id="setup-title">Installation notes</h2>
+        <p class="section-lede">Requirements and manual installation.</p>
         <div class="grid-2">
           <div class="copy">
             <p><strong>Prefer a manual install?</strong> Clone the repository and use the bundled scripts:</p>
@@ -225,8 +225,8 @@ bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
       </section>
 
       <section class="section" id="resources" aria-labelledby="resources-title">
-        <h2 class="section-title" id="resources-title">Find your way around.</h2>
-        <p class="section-lede">Everything about GlassDock, from the source to the setup details.</p>
+        <h2 class="section-title" id="resources-title">Resources</h2>
+        <p class="section-lede">Source code, documentation, companion apps, and support.</p>
         <div class="resource-grid">
           <a class="resource" href="https://github.com/Mandrusian/GlassDock/blob/master/README.md">
             <span class="resource-icon" aria-hidden="true">⌁</span><h3>Documentation</h3><p>Installation, settings, keybindings, troubleshooting, and project layout.</p><span class="resource-arrow">Read the README ↗</span>
@@ -255,7 +255,7 @@ bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
 
     <div class="rule"></div>
     <footer class="footer">
-      <p><strong>GlassDock</strong> · Your workspace, in a better light.</p>
+      <p><strong>GlassDock</strong> · A customizable dock for Wayland.</p>
       <p>Built for Wayland · Released under the <a href="https://github.com/Mandrusian/GlassDock/blob/master/LICENSE">MIT license</a>.</p>
       <p>Web refraction adapted from <a href="https://github.com/ccl125/liquid-glass">ccl125/liquid-glass</a> under MIT.</p>
       <p>© <span data-year>2026</span> GlassDock contributors · <a href="https://github.com/Mandrusian/GlassDock">GitHub</a></p>
