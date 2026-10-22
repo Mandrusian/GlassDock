@@ -79,7 +79,7 @@
               <span data-copy-label>Copy command</span>
             </button>
           </div>
-          <p class="small-note">The terminal setup offers <strong>Install / Upgrade</strong>, <strong>Uninstall</strong>, and <strong>Exit</strong>. Prefer to inspect first? <a href="https://github.com/Mandrusian/GlassDock/blob/master/installer.sh">Read the installer source.</a></p>
+          <p class="small-note">The terminal setup can install or remove both <strong>GlassDock</strong> and <strong>GlassIcon Studio</strong>. Prefer to inspect first? <a href="https://github.com/Mandrusian/GlassDock/blob/master/installer.sh">Read the installer source.</a></p>
         </div>
       </section>
 
@@ -132,6 +132,31 @@ bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
             <div class="glass-panel callout">
               <p><strong>Two different things:</strong> On the dock itself, SwayFX provides desktop background blur through <code>layer_effects</code>. On this page, Chromium uses an SVG displacement map to bend the background through the glass edges; Safari and Firefox fall back to a lighter frosted material.</p>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="glassicon" aria-labelledby="glassicon-title">
+        <h2 class="section-title" id="glassicon-title">GlassIcon Studio</h2>
+        <p class="section-lede">A companion tool for the details outside the dock.</p>
+        <div class="grid-2">
+          <div class="copy">
+            <p>Manage icon themes, change individual application launcher icons, and add user-level folder, Home, Trash, drive, and file-type icons. GlassIcon is built with Python and GTK 3, and keeps changes in your user profile.</p>
+            <p>No background daemon and no root access for icon changes. It works well with Thunar and lightweight window-manager setups where the desktop settings panel does not reach every icon.</p>
+            <p><a href="https://github.com/Mandrusian/GlassDock/tree/master/extras/GlassIcon">Explore GlassIcon Studio source ↗</a></p>
+          </div>
+          <div class="code-stack">
+            <div class="code-card">
+              <div class="code-label">Install from the project checkout</div>
+              <pre><span class="prompt">$</span> ./extras/GlassIcon/install.sh
+
+<span class="comment"># Include dependency installation</span>
+<span class="prompt">$</span> ./extras/GlassIcon/install.sh --deps
+
+<span class="comment"># Launch the app</span>
+<span class="prompt">$</span> glassicon</pre>
+            </div>
+            <p class="small-note">The main GlassDock setup menu also includes Install / Upgrade and Uninstall options for GlassIcon Studio.</p>
           </div>
         </div>
       </section>
@@ -211,6 +236,9 @@ bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1</pre>
           </a>
           <a class="resource" href="https://github.com/Mandrusian/GlassDock/issues">
             <span class="resource-icon" aria-hidden="true">↗</span><h3>Get help</h3><p>Report bugs or discuss a setup issue with Sway, SwayFX, or Wayland.</p><span class="resource-arrow">Open an issue ↗</span>
+          </a>
+          <a class="resource" href="https://github.com/Mandrusian/GlassDock/tree/master/extras/GlassIcon">
+            <span class="resource-icon" aria-hidden="true">⌘</span><h3>GlassIcon Studio</h3><p>Manage icon themes, application icons, and file-manager symbols.</p><span class="resource-arrow">Explore GlassIcon ↗</span>
           </a>
           <a class="resource" href="https://github.com/Mandrusian/GlassDock/blob/master/installer.sh">
             <span class="resource-icon" aria-hidden="true">›_</span><h3>Guided installer</h3><p>Review the installer before running it on your computer.</p><span class="resource-arrow">Inspect installer ↗</span>
