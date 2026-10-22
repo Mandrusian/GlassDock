@@ -6,7 +6,6 @@
 
 <p align="center"><a href="https://mandrusian.github.io/GlassDock/">Project website ↗</a> · <a href="https://github.com/Mandrusian/GlassDock">Source code</a></p>
 
-
 GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without replacing your compositor or desktop shell.
 
 - **Launchers and running apps** — pin applications, group their windows, and see running-app indicators through Sway IPC.
