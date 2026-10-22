@@ -1,6 +1,6 @@
 # Third-party notices
 
-ModernDock's source code is original and contains no code copied from other projects.
+GlassDock's source code is original and contains no code copied from other projects.
 It **uses** the following software at runtime. None of it is bundled in this archive;
 it is installed from the Fedora repositories by `scripts/install-deps.sh`, and remains
 under its own license.
@@ -18,4 +18,4 @@ Optional, not required: fuzzel (default "Applications" button command, MIT), foo
 libnotify (`notify-send` launch-error notifications, LGPL-2.1).
 
 "macOS" and "Liquid Glass" are trademarks of Apple Inc. The themes with these names are original
-styles *inspired by* those designs; ModernDock is not affiliated with or endorsed by Apple.
+styles *inspired by* those designs; GlassDock is not affiliated with or endorsed by Apple.

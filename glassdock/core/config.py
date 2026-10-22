@@ -66,7 +66,11 @@ SCHEMA = [
     _s("appearance.border_width", "Border width", "style", "float", 1.0,
        min=0.0, max=6.0, step=0.5, unit="px"),
     _s("appearance.corner_radius", "Corner radius", "style", "int", 22,
-       min=0, max=60, step=1, unit="px", keywords="rounded"),
+       min=0, max=120, step=1, unit="px", keywords="rounded corners round radius pill",
+       help="Rounding of the dock panel. Values above half the dock's height just give a pill shape."),
+    _s("appearance.icon_radius", "Icon corner radius", "style", "int", 0,
+       min=0, max=50, step=1, unit="%", keywords="rounded corners squircle circle icons",
+       help="Rounds the corners of every icon. 0 keeps each icon as its app drew it; 50 makes circles."),
     _s("appearance.shadow", "Drop shadow", "style", "bool", True),
     _s("appearance.shadow_size", "Shadow size", "style", "int", 18,
        min=0, max=40, step=1, unit="px", depends=("appearance.shadow", True)),
@@ -136,6 +140,13 @@ SCHEMA = [
        "bool", True),
     _s("behavior.launcher_command", "Applications button command", "behavior", "text", "fuzzel",
        help="Run when the Applications item is clicked."),
+    _s("behavior.autostart", "Start GlassDock automatically at login", "behavior", "bool", True,
+       keywords="startup boot login session",
+       help="Master switch for login autostart (set up by install.sh)."),
+    _s("behavior.autostart_wms", "Only auto-start in these sessions/WMs", "behavior", "text", "sway",
+       depends=("behavior.autostart", True), keywords="window manager compositor hyprland niri river",
+       help="Comma-separated, e.g. sway, hyprland, niri. Use * for every session. Matched against "
+            "XDG_CURRENT_DESKTOP, XDG_SESSION_DESKTOP and DESKTOP_SESSION."),
     _s("behavior.terminal_command", "Terminal for terminal apps", "behavior", "text", "foot",
        help="Used for launchers that need a terminal (run as: terminal -e command)."),
 ]
@@ -419,22 +430,43 @@ def matches_theme(cfg, name):
 def config_dir(env=None):
     env = os.environ if env is None else env
     base = env.get("XDG_CONFIG_HOME") or os.path.join(env.get("HOME", os.path.expanduser("~")), ".config")
-    return os.path.join(base, "moderndock")
+    return os.path.join(base, "glassdock")
 
 
 def config_path(env=None):
     return os.path.join(config_dir(env), "config.json")
 
 
+LEGACY_NAME = "modern" + "dock"   # the project's previous name
+
+
+def legacy_config_path(env=None):
+    env = os.environ if env is None else env
+    base = env.get("XDG_CONFIG_HOME") or os.path.join(env.get("HOME", os.path.expanduser("~")), ".config")
+    return os.path.join(base, LEGACY_NAME, "config.json")
+
+
+def _read_legacy():
+    try:
+        with open(legacy_config_path(), "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else None
+    except (OSError, ValueError):
+        return None
+
+
 def load_config(path=None, entries=None):
     """Load, migrate and validate the config. A missing file yields defaults;
     a corrupt file is moved aside (config.json.corrupt-<time>) first."""
+    use_default = path is None
     path = path or config_path()
     try:
         with open(path, "r", encoding="utf-8") as fh:
             raw = json.load(fh)
     except FileNotFoundError:
-        return default_config(entries)
+        raw = _read_legacy() if use_default else None
+        if raw is None:
+            return default_config(entries)
     except (OSError, ValueError):
         try:
             os.replace(path, "%s.corrupt-%d" % (path, int(time.time())))

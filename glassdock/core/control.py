@@ -1,5 +1,5 @@
 """Tiny JSON-lines control socket used by the settings app and
-`moderndock-ctl` (e.g. for Sway keybindings)."""
+`glassdock-ctl` (e.g. for Sway keybindings)."""
 import json
 import os
 import socket
@@ -10,8 +10,8 @@ def socket_path(env=None):
     env = os.environ if env is None else env
     rt = env.get("XDG_RUNTIME_DIR")
     if rt and os.path.isdir(rt):
-        return os.path.join(rt, "moderndock.sock")
-    return "/tmp/moderndock-%d.sock" % os.getuid()
+        return os.path.join(rt, "glassdock.sock")
+    return "/tmp/glassdock-%d.sock" % os.getuid()
 
 
 def send_command(msg, path=None, timeout=1.5):

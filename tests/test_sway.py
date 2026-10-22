@@ -3,7 +3,7 @@ import tempfile
 import threading
 import unittest
 
-from moderndock.core import sway as S
+from glassdock.core import sway as S
 from tests.mock_sway import MockSway, sample_tree
 
 

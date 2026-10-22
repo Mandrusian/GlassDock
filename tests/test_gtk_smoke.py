@@ -31,9 +31,9 @@ def pump(n=40):
 class GtkSmoke(unittest.TestCase):
     def setUp(self):
         import cairo
-        from moderndock import dock
-        from moderndock.core import config as C, model as M
-        from moderndock.core.desktop import load_entries
+        from glassdock import dock
+        from glassdock.core import config as C, model as M
+        from glassdock.core.desktop import load_entries
         self.cairo, self.dock, self.C, self.M = cairo, dock, C, M
         self.entries = load_entries()
         self.app = dock.DockApp()

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""moderndock-ctl: talk to the running dock (handy for Sway keybindings)."""
+"""glassdock-ctl: talk to the running dock (handy for Sway keybindings)."""
 import json
 import sys
 
 from .core import control
 
-USAGE = """usage: moderndock-ctl <command> [arg]
+USAGE = """usage: glassdock-ctl <command> [arg]
 
   ping            exit 0 if the dock is running
   status          print dock status as JSON
@@ -31,7 +31,7 @@ def main(argv=None):
         msg["index"] = argv[1]
     reply = control.send_command(msg)
     if reply is None:
-        print("moderndock is not running", file=sys.stderr)
+        print("glassdock is not running", file=sys.stderr)
         return 1
     if argv[0] == "status":
         print(json.dumps(reply, indent=2))

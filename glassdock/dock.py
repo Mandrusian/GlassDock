@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ModernDock: floating dock for Wayland (Sway/SwayFX) using GTK3 + gtk-layer-shell.
+"""GlassDock: floating dock for Wayland (Sway/SwayFX) using GTK3 + gtk-layer-shell.
 
 All dock-facing settings are read through the getter `g(<dotted key>)` so that
 tests/test_coverage.py can verify every schema setting is consumed here.
@@ -35,8 +35,9 @@ from .core import control, model as M, sway  # noqa: E402
 from .core.envutil import child_env  # noqa: E402
 from .core.colors import parse_color, with_alpha  # noqa: E402
 from .core.desktop import expand_exec, load_entries  # noqa: E402
+from .core.icons import candidate_names, find_icon_file, icon_roots  # noqa: E402
 
-NAMESPACE = "moderndock"
+NAMESPACE = "glassdock"
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -45,7 +46,7 @@ def getter(cfg):
 
 
 def log(*a):
-    print("[moderndock]", *a, file=sys.stderr, flush=True)
+    print("[glassdock]", *a, file=sys.stderr, flush=True)
 
 
 # ------------------------------------------------------------------ drawing
@@ -60,8 +61,8 @@ def rrect(cr, x, y, w, h, r):
     cr.close_path()
 
 
-def _tile(cr, x, y, s, top, bottom):
-    rrect(cr, x, y, s, s, s * 0.23)
+def _tile(cr, x, y, s, top, bottom, pct=None):
+    rrect(cr, x, y, s, s, s * (pct / 100.0 if pct else 0.23))
     pat = cairo.LinearGradient(x, y, x, y + s)
     pat.add_color_stop_rgb(0, *top)
     pat.add_color_stop_rgb(1, *bottom)
@@ -69,10 +70,10 @@ def _tile(cr, x, y, s, top, bottom):
     cr.fill()
 
 
-def draw_builtin(cr, kind, x, y, s):
+def draw_builtin(cr, kind, x, y, s, pct=None):
     """Built-in glyph icons so special items never depend on the icon theme."""
     if kind == "apps":
-        _tile(cr, x, y, s, (0.36, 0.40, 0.46), (0.22, 0.25, 0.30))
+        _tile(cr, x, y, s, (0.36, 0.40, 0.46), (0.22, 0.25, 0.30), pct)
         cell = s * 0.16
         gap = s * 0.085
         start = x + (s - (3 * cell + 2 * gap)) / 2
@@ -83,7 +84,7 @@ def draw_builtin(cr, kind, x, y, s):
                       cell, cell, cell * 0.3)
                 cr.fill()
     elif kind == "trash":
-        _tile(cr, x, y, s, (0.50, 0.54, 0.62), (0.32, 0.36, 0.43))
+        _tile(cr, x, y, s, (0.50, 0.54, 0.62), (0.32, 0.36, 0.43), pct)
         cr.set_source_rgba(1, 1, 1, 0.95)
         bw, bh = s * 0.36, s * 0.38
         bx, by = x + (s - bw) / 2, y + s * 0.38
@@ -99,11 +100,11 @@ def draw_builtin(cr, kind, x, y, s):
         cr.fill()
 
 
-def draw_letter_tile(cr, name, x, y, s):
+def draw_letter_tile(cr, name, x, y, s, pct=None):
     h = (sum(ord(ch) for ch in name) % 360) / 360.0
     top = colorsys.hls_to_rgb(h, 0.58, 0.55)
     bottom = colorsys.hls_to_rgb(h, 0.40, 0.55)
-    _tile(cr, x, y, s, top, bottom)
+    _tile(cr, x, y, s, top, bottom, pct)
     layout = PangoCairo.create_layout(cr)
     layout.set_font_description(Pango.FontDescription("Sans Bold %d" % max(8, int(s * 0.34 * 0.75))))
     layout.set_text((name.strip()[:1] or "?").upper(), -1)
@@ -114,41 +115,92 @@ def draw_letter_tile(cr, name, x, y, s):
 
 
 class IconCache:
-    """Loads crisp icon surfaces at the largest size needed and caches them."""
+    """Loads crisp icon surfaces at the largest size needed and caches them.
 
-    EXTS = (".png", ".svg", ".xpm", ".svgz")
+    Lookup order for every candidate name (see core.icons.candidate_names):
+    absolute path -> Gtk icon theme -> our own scan of user/flatpak/snap/pixmaps
+    directories. Failed lookups are retried after a while, so an icon that
+    appears later (app installed, theme changed) is picked up.
+    """
+
+    RETRY = 30.0
 
     def __init__(self):
         self.cache = {}
         theme = Gtk.IconTheme.get_default()
+        try:
+            have = set(theme.get_search_path())
+            for root in icon_roots()[0]:
+                if os.path.isdir(root) and root not in have:
+                    theme.append_search_path(root)
+                    have.add(root)
+        except (GLib.Error, TypeError):
+            pass
         theme.connect("changed", lambda *_: self.cache.clear())
 
+    def _cached(self, key, loader):
+        hit = self.cache.get(key)
+        if hit is not None:
+            res, stamp = hit
+            if res is not None or time.monotonic() - stamp < self.RETRY:
+                return res
+        res = loader()
+        self.cache[key] = (res, time.monotonic())
+        return res
+
     def get(self, icon, px, scale, window):
-        key = (icon, px, scale)
-        if key in self.cache:
-            return self.cache[key]
+        return self._cached((icon, px, scale), lambda: self._load(icon, px, scale, window))
+
+    def get_item(self, it, px, scale, window):
+        sig = tuple(sorted({(w.app_id or "", w.wm_class or "") for w in it.windows}))
+        key = ("item", it.key, it.icon, sig, px, scale)
+
+        def load():
+            for name in candidate_names(it.icon, it.entry, it.windows, it.name):
+                res = self.get(name, px, scale, window)
+                if res is not None:
+                    return res
+            return None
+        return self._cached(key, load)
+
+    def _load(self, icon, px, scale, window):
+        if not icon:
+            return None
         surf = None
-        try:
-            if icon and os.path.isabs(icon) and os.path.exists(icon):
-                pb = GdkPixbuf.Pixbuf.new_from_file_at_size(icon, px * scale, px * scale)
-                surf = Gdk.cairo_surface_create_from_pixbuf(pb, scale, window)
-            elif icon:
-                name = icon
-                for ext in self.EXTS:
-                    if name.lower().endswith(ext):
-                        name = name[:-len(ext)]
-                theme = Gtk.IconTheme.get_default()
-                for cand in (name, name.lower()):
+        path = None
+        if os.path.isabs(icon):
+            if os.path.exists(icon):
+                path = icon
+            else:
+                icon = os.path.basename(icon)
+        if path is None:
+            name = icon
+            for ext in IconCacheExts:
+                if name.lower().endswith(ext):
+                    name = name[:-len(ext)]
+            theme = Gtk.IconTheme.get_default()
+            for cand in (name, name.lower()):
+                try:
                     if theme.has_icon(cand):
                         surf = theme.load_surface(cand, px, scale, window, Gtk.IconLookupFlags.FORCE_SIZE)
-                        break
-        except GLib.Error:
-            surf = None
-        res = None
-        if surf is not None:
-            res = (surf, surf.get_width() / float(scale), surf.get_height() / float(scale))
-        self.cache[key] = res
-        return res
+                except GLib.Error:
+                    surf = None
+                if surf is not None:
+                    break
+            if surf is None:
+                path = find_icon_file(icon)
+        if surf is None and path:
+            try:
+                pb = GdkPixbuf.Pixbuf.new_from_file_at_size(path, px * scale, px * scale)
+                surf = Gdk.cairo_surface_create_from_pixbuf(pb, scale, window)
+            except GLib.Error:
+                surf = None
+        if surf is None:
+            return None
+        return (surf, surf.get_width() / float(scale), surf.get_height() / float(scale))
+
+
+IconCacheExts = (".png", ".svg", ".xpm", ".svgz")
 
 
 # ------------------------------------------------------------------ launching
@@ -157,7 +209,7 @@ def toast(msg):
     log(msg)
     if shutil.which("notify-send"):
         try:
-            subprocess.Popen(["notify-send", "-a", "ModernDock", "ModernDock", msg],
+            subprocess.Popen(["notify-send", "-a", "GlassDock", "GlassDock", msg],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError:
             pass
@@ -200,18 +252,22 @@ class DockWindow(Gtk.Window):
         self.bounce = {}
         self.hover_key = None
         self.press_key = None
+        self.press_item = None
+        self.press_m = 0.0
+        self.press_grab = 0.0
+        self.drag = None
         self.tick_id = None
         self.last_tick = None
         self.region_sig = None
 
-        self.set_title("ModernDock")
+        self.set_title("GlassDock")
         self.set_decorated(False)
         self.set_app_paintable(True)
         screen = self.get_screen()
         visual = screen.get_rgba_visual()
         if visual is not None:
             self.set_visual(visual)
-        self.get_style_context().add_class("moderndock")
+        self.get_style_context().add_class("glassdock")
 
         GtkLayerShell.init_for_window(self)
         GtkLayerShell.set_namespace(self, NAMESPACE)
@@ -361,7 +417,7 @@ class DockWindow(Gtk.Window):
         base_sizes = M.slot_sizes(kinds, geo.icon)
         pos, total = M.base_layout(base_sizes, geo.spacing)
         slot = None
-        if self.pointer is not None and self.progress > 0.99:
+        if self.pointer is not None and self.progress > 0.99 and self.drag is None:
             m0 = M.dock_origin(geo, 2 * geo.padding + total)
             slot = M.pointer_slot(self.pointer[0] - (m0 + geo.padding), pos, base_sizes)
         scales = M.target_scales(kinds, slot, g("animation.magnify_factor"), g("animation.magnify_range"),
@@ -504,6 +560,7 @@ class DockWindow(Gtk.Window):
         pos, sizes, length, m0 = self.layout()
         px, py, pw, ph = M.place(edge, W, H, m0, geo.c0 - off, length, geo.thick)
         radius = g("appearance.corner_radius")
+        icon_pct = g("appearance.icon_radius")
 
         # shadow (stacked translucent layers, clipped so it never tints the glass)
         S = geo.shadow
@@ -555,9 +612,11 @@ class DockWindow(Gtk.Window):
         ind_style = g("indicators.style")
         hover_item = None
 
-        for i, it in enumerate(self.items):
+        for i, it in self.draw_order():
             m, c, s = self.item_rect(i, pos, sizes, m0)
             c -= off
+            if self.drag is not None and it.key == self.drag["key"]:
+                m = self.drag_m(m0, pos, sizes)
             if it.kind == "separator":
                 x, y, w, h = M.place(edge, W, H, m + s / 2 - 0.75, c + geo.icon * 0.12, 1.5, geo.icon * 0.76)
                 cr.set_source_rgba(*with_alpha(parse_color(g("appearance.border_color")), 0.35))
@@ -567,19 +626,22 @@ class DockWindow(Gtk.Window):
             lift = self.bounce_offset(it.key, now)
             x, y, w, h = M.place(edge, W, H, m, c + lift, s, s)
             if it.special in ("apps", "trash"):
-                draw_builtin(cr, it.special, x, y, s)
+                draw_builtin(cr, it.special, x, y, s, icon_pct)
             else:
-                res = icons.get(it.icon, max_px, scale_dev, self.get_window()) if it.icon else None
+                res = icons.get_item(it, max_px, scale_dev, self.get_window())
                 if res is not None:
                     surf, lw, lh = res
                     cr.save()
+                    if icon_pct > 0:
+                        rrect(cr, x, y, s, s, s * icon_pct / 100.0)
+                        cr.clip()
                     cr.translate(x, y)
                     cr.scale(s / lw, s / lh)
                     cr.set_source_surface(surf, 0, 0)
                     cr.paint()
                     cr.restore()
                 else:
-                    draw_letter_tile(cr, it.name, x, y, s)
+                    draw_letter_tile(cr, it.name, x, y, s, icon_pct)
             if it.key == self.hover_key:
                 hover_item = (it, m + s / 2.0, c + s)
 
@@ -607,9 +669,86 @@ class DockWindow(Gtk.Window):
                         cr.set_source_rgba(*col)
                         cr.fill()
 
-        if hover_item is not None and g("appearance.show_labels") and self.progress > 0.95:
+        if self.drag is not None:
+            _, lm = self.drop_target(self.drag["pm"], self.drag["key"])
+            mx, my, mw, mh = M.place(edge, W, H, lm - 1.0, geo.c0 + geo.padding + geo.ind_room - off,
+                                     2.0, geo.icon)
+            cr.set_source_rgba(*parse_color(g("indicators.active_color")))
+            rrect(cr, mx, my, mw, mh, 1.0)
+            cr.fill()
+
+        if hover_item is not None and g("appearance.show_labels") and self.progress > 0.95 \
+                and self.drag is None:
             self.draw_label(cr, W, H, hover_item[0].name, hover_item[1], hover_item[2])
         return False
+
+    # ------------------------------------------------------------ drag & drop
+    def draw_order(self):
+        """Items in paint order: the one being dragged is painted last (on top)."""
+        order = list(enumerate(self.items))
+        if self.drag is not None:
+            order.sort(key=lambda p: p[1].key == self.drag["key"])
+        return order
+
+    def drag_m(self, m0, pos, sizes):
+        d = self.drag
+        lo = m0 + self.geo.padding
+        end = (pos[-1] + sizes[-1]) if pos else 0.0
+        hi = max(lo, lo + end - d["size"])
+        return max(lo, min(hi, d["pm"] - d["grab"]))
+
+    def drop_target(self, pm, key):
+        """-> (config index to insert before or None for 'at the end', marker position)."""
+        geo = self.geo
+        pos, sizes, length, m0 = self.layout()
+        base = m0 + geo.padding
+        last_end = None
+        for i, it in enumerate(self.items):
+            if it.key == key or it.cfg_index < 0:
+                continue
+            start = base + pos[i]
+            if pm < start + sizes[i] / 2.0:
+                return it.cfg_index, start - geo.spacing / 2.0
+            last_end = start + sizes[i]
+        return None, (last_end if last_end is not None else base) + geo.spacing / 2.0
+
+    def update_drag(self, ev):
+        if self.press_item is None or self.pointer is None:
+            return
+        if not (ev.state & Gdk.ModifierType.BUTTON1_MASK):
+            if self.drag is not None:
+                self.cancel_drag()
+            return
+        if self.drag is None:
+            it = self.press_item
+            if abs(self.pointer[0] - self.press_m) < 8 or it.cfg_index < 0 or \
+                    it.kind == "separator" or self.menu_open:
+                return
+            self.drag = {"key": it.key, "grab": self.press_grab, "pm": self.pointer[0],
+                         "size": self.geo.icon}
+        else:
+            self.drag["pm"] = self.pointer[0]
+
+    def cancel_drag(self):
+        self.drag = None
+        self.press_key = None
+        self.press_item = None
+        self.update_targets()
+        self.queue_draw()
+
+    def finish_drag(self, pm):
+        d = self.drag
+        self.drag = None
+        self.press_key = None
+        self.press_item = None
+        if d is not None:
+            before, _ = self.drop_target(pm, d["key"])
+            cur = next((i for i in self.items if i.key == d["key"]), None)
+            if cur is not None and cur.cfg_index >= 0:
+                self.app.move_item(cur.cfg_index, before)
+        self.update_targets()
+        self.ensure_tick()
+        self.queue_draw()
 
     def draw_label(self, cr, W, H, text, mid, top_c):
         g, geo = self.g, self.geo
@@ -650,11 +789,12 @@ class DockWindow(Gtk.Window):
     def on_motion(self, w, ev):
         self.pointer_inside = True
         self.pointer = self.canon(ev)
+        self.update_drag(ev)
         self.after_pointer()
         return False
 
     def on_leave(self, w, ev):
-        if self.menu_open:
+        if self.menu_open or self.drag is not None:
             return False
         self.pointer_inside = False
         self.pointer = None
@@ -667,7 +807,7 @@ class DockWindow(Gtk.Window):
             return
         self.update_targets()
         it = self.item_at(*self.pointer) if self.pointer else None
-        key = it.key if it else None
+        key = it.key if (it and self.drag is None) else None
         if key != self.hover_key:
             self.hover_key = key
         self.ensure_tick()
@@ -682,16 +822,27 @@ class DockWindow(Gtk.Window):
             self.show_menu(it, ev)
         elif ev.button in (1, 2):
             self.press_key = it.key if it else None
+            self.press_item = it
+            self.drag = None
+            if it is not None:
+                pos, sizes, length, m0 = self.layout()
+                mm, _cc, _ss = self.item_rect(self.items.index(it), pos, sizes, m0)
+                self.press_m = m
+                self.press_grab = m - mm
         return True
 
     def on_release(self, w, ev):
         if self.geo is None or ev.button not in (1, 2):
+            return True
+        if self.drag is not None:
+            self.finish_drag(self.canon(ev)[0])
             return True
         it = self.item_at(*self.canon(ev))
         if it is not None and it.key == self.press_key:
             new = ev.button == 2 or bool(ev.state & Gdk.ModifierType.SHIFT_MASK)
             self.app.activate(it, new_instance=new, dock=self)
         self.press_key = None
+        self.press_item = None
         return True
 
     # -------------------------------------------------------------------- menu
@@ -794,19 +945,19 @@ class DockApp:
             return 1
         if not GtkLayerShell.is_supported():
             log("This compositor does not support wlr-layer-shell (or GDK is not using Wayland). "
-                "ModernDock needs Sway/SwayFX on Wayland. If GDK_BACKEND=x11 is set, unset it.")
+                "GlassDock needs Sway/SwayFX on Wayland. If GDK_BACKEND=x11 is set, unset it.")
             return 1
 
         self.control = control.ControlServer(self.handle_control)
         try:
             self.control.bind()
         except control.AlreadyRunning:
-            log("ModernDock is already running.")
+            log("GlassDock is already running.")
             return 1
         self.control.start()
 
         provider = Gtk.CssProvider()
-        provider.load_from_data(b"window.moderndock, window.moderndock > * { background: transparent; }")
+        provider.load_from_data(b"window.glassdock, window.glassdock > * { background: transparent; }")
         Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), provider,
                                                  Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.icons = IconCache()
@@ -983,7 +1134,9 @@ class DockApp:
             return {"ok": True, "version": __version__, "sway_ipc": self.sway_ok,
                     "outputs": sorted(list(self.docks)), "blur": self.blur_state,
                     "items": len(self.items), "windows": len(self.windows),
-                    "theme": (self.cfg or {}).get("theme")}
+                    "theme": (self.cfg or {}).get("theme"),
+                    "autostart": getter(self.cfg)("behavior.autostart") if self.cfg else None,
+                    "autostart_wms": getter(self.cfg)("behavior.autostart_wms") if self.cfg else None}
         if cmd == "quit":
             GLib.idle_add(self.quit)
             return {"ok": True}
@@ -1091,9 +1244,15 @@ class DockApp:
             del self.cfg["items"][idx]
             self.save_cfg()
 
+    def move_item(self, src, before):
+        new = M.reorder_items(self.cfg["items"], src, before)
+        if new is not None:
+            self.cfg["items"] = new
+            self.save_cfg()
+
     def open_settings(self):
         try:
-            subprocess.Popen([os.path.join(ROOT, "bin", "moderndock-settings")], cwd=ROOT, env=child_env(),
+            subprocess.Popen([os.path.join(ROOT, "bin", "glassdock-settings")], cwd=ROOT, env=child_env(),
                              start_new_session=True)
         except OSError as exc:
             toast("Could not open settings: %s" % exc)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ModernDock settings: a schema-driven GTK3 app.
+"""GlassDock settings: a schema-driven GTK3 app.
 
 One control is generated for every entry of config.SCHEMA, so a visible
 setting always maps to a real, validated, dock-consumed option. Changes are
@@ -11,6 +11,7 @@ import os
 import subprocess
 import sys
 import threading
+import time
 
 import gi
 
@@ -25,6 +26,7 @@ from .core import config as C  # noqa: E402
 from .core import control, sway  # noqa: E402
 from .core.colors import normalize_color, parse_color, with_alpha  # noqa: E402
 from .core.desktop import is_launchable, load_entries  # noqa: E402
+from .core.icons import candidate_names, find_icon_file  # noqa: E402
 from .core.themes import CUSTOM, THEMES, theme_label  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -43,9 +45,52 @@ class Store:
         self.listeners = []
         self.save_id = None
         self.on_saved = None
+        self.ext_listeners = []
+        self.last_write = 0.0
+        self._ext_id = None
+        self._mon = None
+        self.watch_file()
 
     def listen(self, fn):
         self.listeners.append(fn)
+
+    def listen_external(self, fn):
+        """Called when config.json was changed by someone else (e.g. the dock)."""
+        self.ext_listeners.append(fn)
+
+    def watch_file(self):
+        try:
+            d = C.config_dir()
+            os.makedirs(d, exist_ok=True)
+            self._mon = Gio.File.new_for_path(d).monitor_directory(Gio.FileMonitorFlags.WATCH_MOVES, None)
+            self._mon.connect("changed", self._on_file)
+        except (GLib.Error, OSError):
+            self._mon = None
+
+    def _on_file(self, mon, f, other, event):
+        names = {x.get_basename() for x in (f, other) if x is not None}
+        if "config.json" in names and self._ext_id is None:
+            self._ext_id = GLib.timeout_add(150, self._reload_external)
+
+    def _reload_external(self):
+        self._ext_id = None
+        if self.save_id is not None or time.monotonic() - self.last_write < 0.6:
+            return False  # our own write (or edits still pending) wins
+        try:
+            new = C.load_config(entries=self.entries)
+        except Exception:
+            return False
+        if new == self.cfg:
+            return False
+        self.cfg = new
+        for fn in list(self.ext_listeners) + list(self.listeners):
+            try:
+                fn()
+            except Exception as exc:  # a broken page must not stop the others
+                print("[glassdock-settings] refresh failed: %s" % exc, file=sys.stderr)
+        if self.on_saved:
+            self.on_saved("Updated: the dock changed your settings", True)
+        return False
 
     def get(self, key):
         return C.get_path(self.cfg, key)
@@ -107,6 +152,7 @@ class Store:
 
     def _save(self):
         self.save_id = None
+        self.last_write = time.monotonic()
         try:
             C.save_config(self.cfg)
         except OSError as exc:
@@ -125,6 +171,7 @@ class Store:
         if self.save_id is not None:
             GLib.source_remove(self.save_id)
             self.save_id = None
+            self.last_write = time.monotonic()
             C.save_config(self.cfg)
             control.send_command({"cmd": "reload"}, timeout=0.5)
 
@@ -422,9 +469,19 @@ class ThemesPage(Gtk.Box):
 
 # ------------------------------------------------------------------ launchers
 
-def gicon_for(icon):
-    if icon and os.path.isabs(icon) and os.path.exists(icon):
-        return Gio.FileIcon.new(Gio.File.new_for_path(icon))
+def gicon_for(icon, entry=None):
+    names = candidate_names(icon, entry)
+    theme = Gtk.IconTheme.get_default()
+    for n in names:
+        if os.path.isabs(n):
+            if os.path.exists(n):
+                return Gio.FileIcon.new(Gio.File.new_for_path(n))
+        elif theme.has_icon(n):
+            return Gio.ThemedIcon.new(n)
+    for n in names:
+        p = find_icon_file(n)
+        if p:
+            return Gio.FileIcon.new(Gio.File.new_for_path(p))
     return Gio.ThemedIcon.new_with_default_fallbacks(icon or "application-x-executable")
 
 
@@ -450,7 +507,7 @@ class AppPicker(Gtk.Dialog):
             hb.set_margin_start(8)
             hb.set_margin_top(4)
             hb.set_margin_bottom(4)
-            img = Gtk.Image.new_from_gicon(gicon_for(e.icon), Gtk.IconSize.DND)
+            img = Gtk.Image.new_from_gicon(gicon_for(e.icon, e), Gtk.IconSize.DND)
             img.set_pixel_size(32)
             hb.pack_start(img, False, False, 0)
             hb.pack_start(Gtk.Label(label=e.name, xalign=0), True, True, 0)
@@ -571,6 +628,7 @@ class LaunchersPage(Gtk.Box):
             bar.add(b)
         self.pack_start(bar, False, False, 0)
         self.load()
+        store.listen_external(self.load)
 
     # model <-> config
     def describe(self, spec):
@@ -585,7 +643,7 @@ class LaunchersPage(Gtk.Box):
         entry = self.store.entries.get(spec["id"])
         if entry is None:
             return gicon_for("dialog-question-symbolic"), "%s  (not installed)" % spec["id"]
-        return gicon_for(entry.icon), entry.name
+        return gicon_for(entry.icon, entry), entry.name
 
     def load(self):
         self.loading = True
@@ -802,7 +860,7 @@ class StatusPage(Gtk.Box):
         self.pack_start(bar, False, False, 0)
         note = Gtk.Label(xalign=0)
         note.set_markup(
-            "<small>Blur: ModernDock only reports blur as active if SwayFX accepted the "
+            "<small>Blur: GlassDock only reports blur as active if SwayFX accepted the "
             "<tt>layer_effects</tt> command; otherwise the dock is translucent without blur.</small>")
         note.set_line_wrap(True)
         note.set_margin_start(16)
@@ -821,12 +879,13 @@ class StatusPage(Gtk.Box):
             lines += ["Sway IPC: %s" % ("connected" if r.get("sway_ipc") else "not connected (no running indicators)"),
                       "Monitors with a dock: %s" % (", ".join(r.get("outputs", [])) or "none"),
                       "Open windows seen: %s" % r.get("windows"), "Dock items: %s" % r.get("items"),
-                      "Blur: %s" % r.get("blur"), "Theme: %s" % r.get("theme")]
+                      "Blur: %s" % r.get("blur"), "Theme: %s" % r.get("theme"),
+                      "Autostart: %s (%s)" % ("on" if r.get("autostart") else "off", r.get("autostart_wms"))]
         self.info.set_text("\n".join(lines))
 
     def _spawn_dock(self):
         # go through the launcher script so the layer-shell preload is applied
-        subprocess.Popen([os.path.join(ROOT, "bin", "moderndock")], cwd=ROOT,
+        subprocess.Popen([os.path.join(ROOT, "bin", "glassdock")], cwd=ROOT,
                          start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         GLib.timeout_add(900, lambda: (self.refresh(), False)[1])
 
@@ -851,7 +910,7 @@ class StatusPage(Gtk.Box):
 
 class SettingsWindow(Gtk.Window):
     def __init__(self):
-        super().__init__(title="ModernDock Settings")
+        super().__init__(title="GlassDock Settings")
         self.set_default_size(980, 700)
         self.store = Store()
         self.store.on_saved = self.on_saved
@@ -861,7 +920,7 @@ class SettingsWindow(Gtk.Window):
 
         hb = Gtk.HeaderBar()
         hb.set_show_close_button(True)
-        hb.set_title("ModernDock Settings")
+        hb.set_title("GlassDock Settings")
         self.status = Gtk.Label(label="")
         self.status.get_style_context().add_class("dim-label")
         hb.pack_start(self.status)

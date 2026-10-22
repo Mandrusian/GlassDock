@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from moderndock.core import desktop as D
+from glassdock.core import desktop as D
 
 SAMPLE = """\
 [Desktop Entry]

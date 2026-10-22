@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import unittest
 
-from moderndock.core.envutil import child_env
+from glassdock.core.envutil import child_env
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = sorted(glob.glob(os.path.join(ROOT, "scripts", "*.sh")) + glob.glob(os.path.join(ROOT, "bin", "*")))
@@ -18,7 +18,7 @@ BASH = shutil.which("bash")
 
 def run(args, home, **extra):
     env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": home, "XDG_CONFIG_HOME": os.path.join(home, ".config")}
-    env["MODERNDOCK_ALLOW_ROOT"] = "1"  # tests may run as root inside containers
+    env["GLASSDOCK_ALLOW_ROOT"] = "1"  # tests may run as root inside containers
     env.update(extra)
     return subprocess.run(args, env=env, cwd=ROOT, capture_output=True, text=True, timeout=60)
 
@@ -60,11 +60,11 @@ class SwayIntegration(unittest.TestCase):
         text = self.read()
         self.assertTrue(text.startswith(self.original))
         self.assertEqual(text.count("include "), 1)
-        self.assertEqual(len(glob.glob(self.cfg + ".moderndock-backup-*")), 1)
-        snippet = os.path.join(self.home, ".config", "moderndock", "sway.conf")
+        self.assertEqual(len(glob.glob(self.cfg + ".glassdock-backup-*")), 1)
+        snippet = os.path.join(self.home, ".config", "glassdock", "sway.conf")
         with open(snippet) as f:
             body = f.read()
-        self.assertIn(os.path.join(ROOT, "bin", "moderndock"), body)
+        self.assertIn(os.path.join(ROOT, "bin", "glassdock"), body)
 
     def test_enable_is_idempotent(self):
         run([self.script, "enable-autostart"], self.home)
@@ -78,13 +78,13 @@ class SwayIntegration(unittest.TestCase):
         r = run([self.script, "disable-autostart"], self.home)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.read(), self.original)
-        self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "moderndock", "sway.conf")))
+        self.assertFalse(os.path.exists(os.path.join(self.home, ".config", "glassdock", "sway.conf")))
 
     def test_handles_config_without_trailing_newline(self):
         with open(self.cfg, "w") as f:
             f.write("set $mod Mod4")
         run([self.script, "enable-autostart"], self.home)
-        self.assertIn("set $mod Mod4\n# >>> moderndock", self.read())
+        self.assertIn("set $mod Mod4\n# >>> glassdock", self.read())
         run([self.script, "disable-autostart"], self.home)
         self.assertEqual(self.read(), "set $mod Mod4\n")
 
@@ -110,7 +110,7 @@ class SwayIntegration(unittest.TestCase):
 
     def test_rollback_when_our_change_breaks_a_valid_config(self):
         # fake sway: rejects any config that contains our include
-        path = self._fake_sway('for a; do :; done; if grep -q moderndock "$a"; then echo "bad config" >&2; exit 1; fi; exit 0\n')
+        path = self._fake_sway('for a; do :; done; if grep -q glassdock "$a"; then echo "bad config" >&2; exit 1; fi; exit 0\n')
         r = run([self.script, "enable-autostart"], self.home, PATH=path)
         self.assertEqual(r.returncode, 1)
         self.assertIn("bad config", r.stderr)
@@ -120,7 +120,7 @@ class SwayIntegration(unittest.TestCase):
         path = self._fake_sway("exit 1\n")  # sway always rejects
         r = run([self.script, "enable-autostart"], self.home, PATH=path)
         self.assertEqual(r.returncode, 0, r.stderr)
-        self.assertIn("# >>> moderndock", self.read())
+        self.assertIn("# >>> glassdock", self.read())
 
     def test_check_blur_outside_sway_is_graceful(self):
         r = run([self.script, "check-blur"], self.home)
@@ -134,19 +134,19 @@ class InstallUninstall(unittest.TestCase):
         self.home = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.home, True)
         self.bin = os.path.join(self.home, ".local", "bin")
-        self.app = os.path.join(self.home, ".local", "share", "applications", "moderndock-settings.desktop")
+        self.app = os.path.join(self.home, ".local", "share", "applications", "glassdock-settings.desktop")
 
     def test_install_then_uninstall(self):
         r = run([os.path.join(ROOT, "scripts", "install.sh"), "--no-check"], self.home)
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
-        for cmd in ("moderndock", "moderndock-ctl", "moderndock-settings"):
+        for cmd in ("glassdock", "glassdock-ctl", "glassdock-settings"):
             link = os.path.join(self.bin, cmd)
             self.assertTrue(os.path.islink(link))
             self.assertEqual(os.path.realpath(link), os.path.join(ROOT, "bin", cmd))
         with open(self.app) as f:
-            self.assertIn("moderndock-settings", f.read())
+            self.assertIn("glassdock-settings", f.read())
 
-        cfg = os.path.join(self.home, ".config", "moderndock")
+        cfg = os.path.join(self.home, ".config", "glassdock")
         os.makedirs(cfg)
         with open(os.path.join(cfg, "config.json"), "w") as f:
             f.write("{}")
@@ -158,18 +158,18 @@ class InstallUninstall(unittest.TestCase):
         self.assertTrue(os.path.isdir(ROOT))
 
     def test_purge_backs_up_then_removes_config(self):
-        cfg = os.path.join(self.home, ".config", "moderndock")
+        cfg = os.path.join(self.home, ".config", "glassdock")
         os.makedirs(cfg)
         with open(os.path.join(cfg, "config.json"), "w") as f:
             f.write("{}")
         r = run([os.path.join(ROOT, "scripts", "uninstall.sh"), "--purge"], self.home)
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         self.assertFalse(os.path.exists(cfg))
-        self.assertEqual(len(glob.glob(os.path.join(self.home, "moderndock-config-backup-*.tar.gz"))), 1)
+        self.assertEqual(len(glob.glob(os.path.join(self.home, "glassdock-config-backup-*.tar.gz"))), 1)
 
     def test_uninstall_leaves_foreign_files_alone(self):
         os.makedirs(self.bin)
-        foreign = os.path.join(self.bin, "moderndock")
+        foreign = os.path.join(self.bin, "glassdock")
         with open(foreign, "w") as f:
             f.write("#!/bin/sh\n")
         run([os.path.join(ROOT, "scripts", "uninstall.sh")], self.home)
@@ -178,14 +178,14 @@ class InstallUninstall(unittest.TestCase):
 
 class ChildEnv(unittest.TestCase):
     def test_removes_only_our_preload(self):
-        env = child_env({"MODERNDOCK_PRELOAD": "/usr/lib64/libgtk-layer-shell.so.0",
+        env = child_env({"GLASSDOCK_PRELOAD": "/usr/lib64/libgtk-layer-shell.so.0",
                          "LD_PRELOAD": "/usr/lib64/libgtk-layer-shell.so.0:/opt/other.so", "A": "1"})
         self.assertEqual(env["LD_PRELOAD"], "/opt/other.so")
-        self.assertNotIn("MODERNDOCK_PRELOAD", env)
+        self.assertNotIn("GLASSDOCK_PRELOAD", env)
         self.assertEqual(env["A"], "1")
 
     def test_drops_empty_preload(self):
-        env = child_env({"MODERNDOCK_PRELOAD": "/x.so", "LD_PRELOAD": "/x.so"})
+        env = child_env({"GLASSDOCK_PRELOAD": "/x.so", "LD_PRELOAD": "/x.so"})
         self.assertNotIn("LD_PRELOAD", env)
 
     def test_untouched_without_marker(self):

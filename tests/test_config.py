@@ -3,9 +3,9 @@ import os
 import tempfile
 import unittest
 
-from moderndock.core import config as C
-from moderndock.core.colors import normalize_color, parse_color, is_valid_color
-from moderndock.core.themes import THEMES, CUSTOM
+from glassdock.core import config as C
+from glassdock.core.colors import normalize_color, parse_color, is_valid_color
+from glassdock.core.themes import THEMES, CUSTOM
 
 
 class ColorTests(unittest.TestCase):

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# "Build" step. ModernDock is Python + GTK3, so nothing is compiled to machine
+# "Build" step. GlassDock is Python + GTK3, so nothing is compiled to machine
 # code: this byte-compiles the sources and verifies every runtime dependency.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
@@ -13,7 +13,7 @@ if sys.version_info < (3, 9):
 PY
 
 echo "==> Byte-compiling sources"
-python3 -m compileall -q moderndock
+python3 -m compileall -q glassdock
 
 echo "==> Checking runtime dependencies"
 set +e

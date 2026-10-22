@@ -2,10 +2,10 @@ import os
 import tempfile
 import unittest
 
-from moderndock.core import model as M
-from moderndock.core import control
-from moderndock.core.desktop import parse_desktop_text
-from moderndock.core.sway import Window
+from glassdock.core import model as M
+from glassdock.core import control
+from glassdock.core.desktop import parse_desktop_text
+from glassdock.core.sway import Window
 
 
 def entry(eid, name, exec_line, wm=""):

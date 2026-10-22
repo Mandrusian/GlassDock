@@ -174,6 +174,29 @@ def build_items(cfg_items, entries, windows, show_unpinned=True):
     return items
 
 
+def reorder_items(items, src, before):
+    """Move items[src] in front of items[before] (before=None: to the end).
+
+    Returns a new list, or None when the move would not change anything."""
+    n = len(items)
+    if not 0 <= src < n:
+        return None
+    if before is None:
+        if src == n - 1:
+            return None
+    elif before in (src, src + 1) or not 0 <= before <= n:
+        return None
+    out = list(items)
+    item = out.pop(src)
+    if before is None:
+        out.append(item)
+    else:
+        if before > src:
+            before -= 1
+        out.insert(before, item)
+    return out
+
+
 # ------------------------------------------------------------- magnification
 
 def magnify_scale(distance, factor, reach):

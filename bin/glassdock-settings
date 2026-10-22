@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ModernDock launcher: runs the project in place (no system-wide install).
+# GlassDock launcher: runs the project in place (no system-wide install).
 ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
-exec python3 -m moderndock.ctl "$@"
+exec python3 -m glassdock.settings "$@"
