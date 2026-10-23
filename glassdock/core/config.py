@@ -339,7 +339,7 @@ def validate_items(items):
                 add(entry, it)
         elif t == "folder":
             path = it.get("path")
-            if isinstance(path, str) and path.strip() and "\\x00" not in path:
+            if isinstance(path, str) and path.strip() and "\x00" not in path:
                 clean_path = os.path.abspath(os.path.expanduser(path.strip()))
                 if clean_path not in seen_folders:
                     seen_folders.add(clean_path)
