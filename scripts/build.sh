@@ -36,13 +36,13 @@ for ns, ver, pkg in checks:
         gi.require_version(ns, ver)
         print("  ok       %s %s" % (ns, ver))
     except ValueError:
-        print("  MISSING  %s %s  ->  %s" % (ns, ver, ("pkg install gtk3 gtk-layer-shell" if sys.platform.startswith("linux") and __import__("os").environ.get("TERMUX_VERSION") else "install package: " + pkg)))
+        print("  MISSING  %s %s  ->  %s" % (ns, ver, ("pkg install gtk3 gtk-layer-shell" if sys.platform.startswith("linux") and (__import__("os").environ.get("TERMUX_VERSION") or __import__("os").environ.get("PREFIX", "").startswith("/data/data/com.termux/") or __import__("os").environ.get("PREFIX", "").startswith("/data/user/0/com.termux/") or __import__("os").environ.get("ANDROID_ROOT")) else "install package: " + pkg)))
         problems.append(ns)
 try:
     import cairo  # noqa: F401
     print("  ok       pycairo")
 except ImportError:
-    print("  MISSING  pycairo  ->  " + ("pkg install pycairo" if __import__("os").environ.get("TERMUX_VERSION") else "install python3-cairo using your distribution package manager"))
+    print("  MISSING  pycairo  ->  " + ("pkg install pycairo" if (__import__("os").environ.get("TERMUX_VERSION") or __import__("os").environ.get("PREFIX", "").startswith("/data/data/com.termux/") or __import__("os").environ.get("PREFIX", "").startswith("/data/user/0/com.termux/") or __import__("os").environ.get("ANDROID_ROOT")) else "install python3-cairo using your distribution package manager"))
     problems.append("cairo")
 sys.exit(1 if problems else 0)
 PY
