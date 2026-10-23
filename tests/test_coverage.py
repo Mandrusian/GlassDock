@@ -42,7 +42,7 @@ class CoverageTests(unittest.TestCase):
         for c in cats:
             self.assertTrue(any(s.category == c for s in C.SCHEMA), "empty category " + c)
 
-    def test_extensions_use_existing_behavior_page_not_new_sidebar_page(self):
+    def test_extensions_have_a_dedicated_sidebar_panel(self):
         categories = dict(C.CATEGORIES)
         self.assertNotIn("extensions", categories)
         extension_settings = [s for s in C.SCHEMA if s.key.startswith("extensions.")]
@@ -50,7 +50,12 @@ class CoverageTests(unittest.TestCase):
         self.assertTrue(all(s.category == "behavior" for s in extension_settings))
         src = read("glassdock/settings.py")
         self.assertIn('if cat in ("position", "behavior"):', src)
-        self.assertIn('cat == "behavior" and s.key.startswith("extensions.")', src)
+        self.assertIn('self.add_section("Extensions")', src)
+        self.assertIn('self.add_page("extensions", "Extensions", self.extensions_panel)', src)
+        self.assertIn('s.category == cat and not s.key.startswith("extensions.")', src)
+        self.assertNotIn('cat == "behavior" and s.key.startswith("extensions.")', src)
+        extension_src = read("glassdock/extension_settings.py")
+        self.assertIn('Gtk.Label(label="Defaults")', extension_src)
 
     def test_settings_app_builds_pages_from_schema(self):
         src = read("glassdock/settings.py")
