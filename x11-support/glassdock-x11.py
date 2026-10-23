@@ -103,7 +103,6 @@ class X11Dock:
             "_NET_WM_STATE_STICKY", "_NET_WM_STATE_ABOVE",
             "_NET_WM_STATE_SKIP_TASKBAR", "_NET_WM_STATE_SKIP_PAGER",
         ])
-        self._set_atom_list("_NET_WM_DESKTOP", [], type_name="CARDINAL")
         self._set_struts()
         self.window.map()
         self.disp.flush()
