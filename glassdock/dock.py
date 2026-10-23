@@ -1387,7 +1387,7 @@ class DockApp:
                     return
             if isinstance(result, dict) and result.get("action") == "open_path":
                 path = result.get("path")
-                if isinstance(path, str) and path and "\\x00" not in path:
+                if isinstance(path, str) and path and "\x00" not in path:
                     spawn(["xdg-open", os.path.expanduser(path)])
                     return
             if isinstance(result, dict) and result.get("action") == "toast":
