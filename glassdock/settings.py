@@ -50,6 +50,7 @@ CATEGORY_BLURBS = {
     "indicators": "How running and focused apps are marked.",
     "position": "Which edge the dock lives on.",
     "behavior": "Auto-hide, stacking and commands.",
+    "extensions": "Clock, calendar, music, folders, badges and trusted Python plugins.",
 }
 
 # page name -> (sidebar icon fallbacks)
@@ -61,6 +62,7 @@ PAGE_ICONS = {
     "indicators": ("media-record-symbolic", "emblem-ok-symbolic"),
     "position": ("go-bottom-symbolic", "view-pin-symbolic"),
     "behavior": ("preferences-system-symbolic", "emblem-system-symbolic"),
+    "extensions": ("application-x-addon-symbolic", "preferences-other-symbolic"),
     "launchers": ("view-app-grid-symbolic", "view-list-symbolic"),
     "monitors": ("video-display-symbolic", "computer-symbolic"),
     "status": ("utilities-system-monitor-symbolic", "dialog-information-symbolic"),
