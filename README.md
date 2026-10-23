@@ -36,6 +36,17 @@ glassdock-settings
 glassdock-ctl status
 ```
 
+## Built-in widgets and extensions
+
+GlassDock's normal dock and Settings app include clock, calendar, music-control, folder, badge, and trusted user-plugin items. Add or reorder them in **Settings → Launchers → Add other**; the options are part of the main app and config format.
+
+- **Clock and calendar:** native dock icons, configurable time format/seconds, and a calendar popup.
+- **Music:** play/pause from the dock, with previous/next/stop in the right-click menu. Requires `playerctl` and an MPRIS-compatible player.
+- **Folders:** choose a directory in Settings; click its icon to browse children, or open it in your file manager. Hidden-file visibility and menu limits are configurable.
+- **Badges:** right-click a pinned item and choose **Set badge count…**. Other applications may set a badge through `glassdock-ctl badge INDEX COUNT` (INDEX is the 1-based row in Settings → Launchers; 0 clears the badge).
+- **Trusted plugins:** install reviewed Python modules in `~/.config/glassdock/plugins/`, list their module names in **Settings → Widgets & Extensions → Allowed plugin module names**, then add them as items. Example plugins are in `examples/plugins/`. Plugins execute with your user's permissions and are not sandboxed.
+- **Compositor hotkeys:** Wayland compositors own global shortcuts; bind them to `glassdock-ctl toggle`, `show`, `hide`, `launch N`, or other supported commands.
+
 ## X11 / i3 (experimental)
 
 For i3 and other X11 sessions, use the standalone backend in [`x11-support/`](x11-support/README.md). It does not require GTK introspection or gtk-layer-shell:

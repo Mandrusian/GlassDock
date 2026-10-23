@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from .colors import normalize_color
 from .themes import CUSTOM, DEFAULT_THEME, THEMES
 
-CONFIG_VERSION = 2
+CONFIG_VERSION = 3
 
 CATEGORIES = [
     ("style", "Colors & Style"),
@@ -24,6 +24,7 @@ CATEGORIES = [
     ("indicators", "Indicators"),
     ("position", "Position"),
     ("behavior", "Behavior"),
+    ("extensions", "Widgets & Extensions"),
 ]
 
 
@@ -150,6 +151,34 @@ SCHEMA = [
             "XDG_CURRENT_DESKTOP, XDG_SESSION_DESKTOP and DESKTOP_SESSION."),
     _s("behavior.terminal_command", "Terminal for terminal apps", "behavior", "text", "foot",
        help="Used for launchers that need a terminal (run as: terminal -e command)."),
+
+    # ---- Widgets & Extensions
+    _s("extensions.clock_format", "Clock format", "extensions", "choice", "24h",
+       choices=(("24h", "24-hour"), ("12h", "12-hour"))),
+    _s("extensions.clock_show_seconds", "Show seconds in the clock label", "extensions", "bool", False),
+    _s("extensions.calendar_first_weekday", "Calendar first day of week", "extensions", "choice", "monday",
+       choices=(("monday", "Monday"), ("sunday", "Sunday"))),
+    _s("extensions.music_playerctl", "Music-control executable", "extensions", "text", "playerctl",
+       help="Uses playerctl for MPRIS-compatible media players. Install it to enable media controls."),
+    _s("extensions.music_refresh_seconds", "Music metadata refresh", "extensions", "float", 2.0,
+       min=1.0, max=30.0, step=0.5, unit="s"),
+    _s("extensions.music_controls_on_hover", "Show music status on hover", "extensions", "bool", True),
+    _s("extensions.folder_show_hidden", "Show hidden files in folder menus", "extensions", "bool", False),
+    _s("extensions.folder_popup_limit", "Maximum folder-menu entries", "extensions", "int", 30,
+       min=5, max=100, step=5),
+    _s("extensions.folder_fan_radius", "Folder fan radius", "extensions", "int", 96,
+       min=60, max=150, step=2, unit="px"),
+    _s("extensions.folder_fan_angle", "Folder fan angle", "extensions", "int", 110,
+       min=60, max=150, step=5, unit="°"),
+    _s("extensions.badges_enabled", "Show item badges", "extensions", "bool", True),
+    _s("extensions.badge_max_count", "Maximum badge label", "extensions", "int", 99,
+       min=1, max=9999, step=1),
+    _s("extensions.plugins_enabled", "Enable trusted user plugins", "extensions", "bool", True,
+       help="Plugins are ordinary Python code, not sandboxed. Only allowlist code you trust."),
+    _s("extensions.plugin_directory", "Plugin directory", "extensions", "text", "",
+       help="Leave blank to use the GlassDock config folder's plugins directory."),
+    _s("extensions.plugin_allowlist", "Allowed plugin module names", "extensions", "text", "",
+       help="Comma-separated Python filenames without .py. Only explicitly listed plugins are loaded."),
 ]
 
 SETTINGS = {s.key: s for s in SCHEMA}
@@ -276,8 +305,19 @@ def default_items(entries=None):
 def validate_items(items):
     out = []
     seen_apps = set()
+    seen_widgets = set()
+    seen_folders = set()
+    seen_plugins = set()
     if not isinstance(items, list):
         return None
+
+    def add(spec, raw):
+        if "badge_count" in raw:
+            count = raw.get("badge_count")
+            if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                spec["badge_count"] = min(count, 999999)
+        out.append(spec)
+
     for it in items:
         if not isinstance(it, dict):
             continue
@@ -287,25 +327,48 @@ def validate_items(items):
             if isinstance(aid, str) and aid and aid not in seen_apps:
                 seen_apps.add(aid)
                 app = {"type": "app", "id": aid}
-                for k, cap in (("name", 100), ("icon", 500)):  # optional user overrides
+                for k, cap in (("name", 100), ("icon", 500)):
                     v = it.get(k)
                     if isinstance(v, str) and v.strip():
                         app[k] = v.strip()[:cap]
-                out.append(app)
+                add(app, it)
         elif t == "launcher":
             name, ex = it.get("name"), it.get("exec")
             if isinstance(name, str) and name.strip() and isinstance(ex, str) and ex.strip():
-                entry = {"type": "launcher", "name": name.strip()[:100], "exec": ex.strip()[:1000],
-                         "icon": str(it.get("icon", "") or "")[:500]}
+                entry = {"type": "launcher", "name": name.strip()[:100],
+                         "exec": ex.strip()[:1000], "icon": str(it.get("icon", "") or "")[:500]}
                 match = it.get("match")
                 if isinstance(match, str) and match.strip():
                     entry["match"] = match.strip()[:200]
-                out.append(entry)
+                add(entry, it)
+        elif t == "folder":
+            path = it.get("path")
+            if isinstance(path, str) and path.strip() and "\x00" not in path:
+                clean_path = os.path.abspath(os.path.expanduser(path.strip()))
+                if clean_path not in seen_folders:
+                    seen_folders.add(clean_path)
+                    name = it.get("name")
+                    icon = it.get("icon", "folder")
+                    folder = {"type": "folder", "path": clean_path,
+                              "name": (name.strip()[:100] if isinstance(name, str) and name.strip()
+                                       else os.path.basename(clean_path.rstrip(os.sep)) or clean_path),
+                              "icon": icon.strip()[:500] if isinstance(icon, str) and icon.strip() else "folder"}
+                    add(folder, it)
+        elif t == "widget":
+            kind = it.get("kind")
+            if kind in ("clock", "calendar", "music") and kind not in seen_widgets:
+                seen_widgets.add(kind)
+                add({"type": "widget", "kind": kind}, it)
+        elif t == "plugin":
+            name = it.get("name")
+            if isinstance(name, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name) and name not in seen_plugins:
+                seen_plugins.add(name)
+                add({"type": "plugin", "name": name}, it)
         elif t == "separator":
-            out.append({"type": "separator"})
+            add({"type": "separator"}, it)
         elif t == "special":
             if it.get("kind") in SPECIAL_KINDS:
-                out.append({"type": "special", "kind": it["kind"]})
+                add({"type": "special", "kind": it["kind"]}, it)
     return out
 
 
@@ -389,6 +452,9 @@ def migrate(cfg):
         if isinstance(ah, bool):
             set_path(cfg, "behavior.autohide", "always" if ah else "off")
         version = 2
+    if version < 3:
+        # v2: widgets and extension settings are added by schema defaults.
+        version = 3
     cfg["version"] = version
     return cfg
 
