@@ -1549,7 +1549,7 @@ class DockApp:
             return
         maximum = getter(self.cfg)("extensions.badge_max_count")
         parent = next(iter(self.docks.values()), None)
-        dialog = Gtk.Dialog(title="Set badge count", parent=parent, flags=Gtk.DialogFlags.MODAL)
+        dialog = Gtk.Dialog(title="Set badge count", transient_for=parent, flags=Gtk.DialogFlags.MODAL)
         dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
         dialog.add_button("Apply", Gtk.ResponseType.OK)
         spin = Gtk.SpinButton.new_with_range(0, 999999, 1)
