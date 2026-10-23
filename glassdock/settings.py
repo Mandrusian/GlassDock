@@ -45,7 +45,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 CATEGORY_BLURBS = {
     "style": "Colors, borders, shadow and glass effects.",
-    "size": "How big the dock and its icons are.",
+    "size": "How big the dock and its icons are. Large docks automatically fit the available monitor space.",
     "animation": "Magnification, motion and timing.",
     "indicators": "How running and focused apps are marked.",
     "position": "Which edge the dock lives on.",
@@ -65,6 +65,25 @@ PAGE_ICONS = {
     "extensions": ("applications-utilities-symbolic", "preferences-plugin-symbolic"),
     "monitors": ("video-display-symbolic", "computer-symbolic"),
     "status": ("utilities-system-monitor-symbolic", "dialog-information-symbolic"),
+}
+
+# Less frequently changed controls remain available from a focused popup instead
+# of taking space on the everyday settings pages.
+ADVANCED_SETTING_KEYS = {
+    "style": (
+        "appearance.bg_color2", "appearance.gradient_direction", "appearance.border_opacity",
+        "appearance.shadow_size", "appearance.shadow_opacity", "appearance.label_bg",
+        "appearance.label_color",
+    ),
+    "animation": (
+        "animation.magnify_factor", "animation.magnify_range", "animation.easing",
+    ),
+    "indicators": ("indicators.color", "indicators.size"),
+    "behavior": (
+        "behavior.show_delay", "behavior.hide_delay", "behavior.exclusive_zone",
+        "behavior.layer", "behavior.launcher_command", "behavior.autostart_wms",
+        "behavior.terminal_command",
+    ),
 }
 
 PREVIEW_PAGES = {"style", "size", "indicators", "position"}
@@ -1875,6 +1894,7 @@ class SettingsWindow(Gtk.Window):
         self.store.listen(self.refresh_rows)
         self.rows = []
         self.search_rows = []
+        self.advanced_rows = []
         self.status_timer = None
 
         self.set_titlebar(self.build_header())
@@ -2019,16 +2039,64 @@ class SettingsWindow(Gtk.Window):
     def category_page(self, cat, text):
         box = page_box()
         box.pack_start(heading(text, CATEGORY_BLURBS.get(cat)), False, False, 0)
-        lb = settings_list()
+        advanced_keys = set(ADVANCED_SETTING_KEYS.get(cat, ()))
         entries = [s for s in C.SCHEMA
-                   if s.category == cat and not s.key.startswith("extensions.")]
+                   if s.category == cat and not s.key.startswith("extensions.")
+                   and s.key not in advanced_keys]
+        advanced_entries = [s for s in C.SCHEMA
+                            if s.category == cat and s.key in advanced_keys]
+        if entries:
+            lb = settings_list()
+            for setting in entries:
+                row = SettingRow(setting, self.store)
+                self.rows.append(row)
+                row_in_list(lb, row)
+            box.pack_start(card(lb), False, False, 0)
+        if advanced_entries:
+            actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+            actions.pack_start(label(
+                "%d additional controls for fine-tuning this section." % len(advanced_entries),
+                "md-row-help", wrap=True), True, True, 0)
+            actions.pack_end(text_button(
+                "Advanced options…",
+                lambda *_: self.show_advanced_settings(text, advanced_entries),
+            ), False, False, 0)
+            box.pack_start(card(actions), False, False, 0)
+        return box
+
+    def show_advanced_settings(self, page_title, entries):
+        dialog = Gtk.Dialog(
+            title="Advanced %s settings" % page_title.lower(),
+            transient_for=self, modal=True)
+        dialog.set_default_size(760, 620)
+        dialog.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+        dialog.add_button("Done", Gtk.ResponseType.CLOSE)
+        area = dialog.get_content_area()
+        area.set_spacing(12)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(area, "set_margin_" + side)(18)
+        area.pack_start(label(
+            "These controls are kept separate to make the main settings pages easier to scan.",
+            "md-page-sub", wrap=True), False, False, 0)
+        lb = settings_list()
+        rows = []
         for setting in entries:
             row = SettingRow(setting, self.store)
-            self.rows.append(row)
+            rows.append(row)
+            self.advanced_rows.append(row)
             row_in_list(lb, row)
-        if entries:
-            box.pack_start(card(lb), False, False, 0)
-        return box
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.add(card(lb))
+        area.pack_start(scroll, True, True, 0)
+        try:
+            dialog.show_all()
+            dialog.run()
+        finally:
+            for row in rows:
+                if row in self.advanced_rows:
+                    self.advanced_rows.remove(row)
+            dialog.destroy()
 
     def on_select(self, lb, row):
         if row is None or getattr(row, "page", None) is None:
@@ -2081,7 +2149,7 @@ class SettingsWindow(Gtk.Window):
         return False
 
     def refresh_rows(self):
-        for r in self.rows + self.search_rows:
+        for r in self.rows + self.search_rows + self.advanced_rows:
             r.refresh()
 
     def on_saved(self, msg, ok):

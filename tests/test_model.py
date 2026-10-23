@@ -149,11 +149,12 @@ class MagnifyTests(unittest.TestCase):
 
 class GeometryTests(unittest.TestCase):
     def geo(self, **kw):
+        kinds = kw.pop("kinds", ["app"] * 5)
         args = dict(icon=52, spacing=8, padding=10, margin=10, shadow_size=18, edge="bottom",
                     alignment="center", indicator_size=4, indicator_style="dot", magnify=True,
                     factor=1.5, reach=2.0, bounce=True, labels=True)
         args.update(kw)
-        return M.compute_geometry(["app"] * 5, **args)
+        return M.compute_geometry(kinds, **args)
 
     def test_basic(self):
         g = self.geo()
@@ -184,6 +185,31 @@ class GeometryTests(unittest.TestCase):
         self.assertEqual(M.dock_origin(self.geo(alignment="start"), 100), 10)
         g2 = self.geo(alignment="end")
         self.assertEqual(M.dock_origin(g2, 100), g2.win_main - 10 - 100)
+
+    def test_long_dock_is_fitted_to_available_main_axis(self):
+        kinds = ["app"] * 15 + ["separator"] + ["widget"] * 5
+        raw = self.geo(kinds=kinds, icon=96)
+        fitted = self.geo(kinds=kinds, icon=96, max_main=760)
+        self.assertGreater(raw.win_main, 760)
+        self.assertLessEqual(fitted.win_main, 760)
+        self.assertLess(fitted.icon, raw.icon)
+        self.assertLess(fitted.base_len, raw.base_len)
+        self.assertEqual(fitted.n_kinds, len(kinds))
+
+    def test_fitting_preserves_requested_size_when_it_already_fits(self):
+        ordinary = self.geo()
+        fitted = self.geo(max_main=ordinary.win_main + 100)
+        self.assertEqual(fitted.icon, ordinary.icon)
+        self.assertEqual(fitted.spacing, ordinary.spacing)
+        self.assertEqual(fitted.padding, ordinary.padding)
+        self.assertEqual(fitted.win_main, ordinary.win_main)
+
+    def test_very_large_icon_configuration_cannot_exceed_main_axis_budget(self):
+        for edge in ("bottom", "top", "left", "right"):
+            with self.subTest(edge=edge):
+                fitted = self.geo(kinds=["app"] * 12, icon=128, edge=edge, max_main=540)
+                self.assertLessEqual(fitted.win_main, 540)
+                self.assertGreater(fitted.icon, 0)
 
     def test_exclusive_zone(self):
         g = self.geo()

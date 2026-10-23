@@ -370,13 +370,18 @@ class DockWindow(Gtk.Window):
         self.fullscreen = fullscreen
         kinds = [i.kind for i in items]
         shadow = g("appearance.shadow_size") if g("appearance.shadow") else 0
+        rect = self.output.get("rect", (0, 0, 0, 0))
+        main_extent = rect[2] if M.is_horizontal(g("position.edge")) else rect[3]
+        margin = max(0, int(g("size.margin")))
+        main_budget = max(1, int(main_extent) - 2 * min(margin, max(0, int(main_extent) // 4)))
         self.geo = geo = M.compute_geometry(
             kinds, icon=g("size.icon_size"), spacing=g("size.spacing"), padding=g("size.padding"),
             margin=g("size.margin"), shadow_size=shadow, edge=g("position.edge"),
             alignment=g("position.alignment"), indicator_size=g("indicators.size"),
             indicator_style=g("indicators.style"), magnify=g("animation.magnify"),
             factor=g("animation.magnify_factor"), reach=g("animation.magnify_range"),
-            bounce=g("animation.launch_bounce"), labels=g("appearance.show_labels"))
+            bounce=g("animation.launch_bounce"), labels=g("appearance.show_labels"),
+            max_main=main_budget)
 
         L = GtkLayerShell
         L.set_layer(self, L.Layer.OVERLAY if g("behavior.layer") == "overlay" else L.Layer.TOP)

@@ -35,6 +35,24 @@ class CoverageTests(unittest.TestCase):
             self.assertTrue(re.search(r't == "%s"|t in \([^)]*"%s"' % (t, t), body),
                             "no control for type %s" % t)
 
+    def test_advanced_settings_keys_are_valid_and_remain_available(self):
+        import ast
+        src = read("glassdock/settings.py")
+        tree = ast.parse(src)
+        value = next(node.value for node in tree.body
+                     if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == "ADVANCED_SETTING_KEYS"
+                             for target in node.targets))
+        advanced = ast.literal_eval(value)
+        for category, keys in advanced.items():
+            with self.subTest(category=category):
+                self.assertTrue(keys)
+                for key in keys:
+                    self.assertIn(key, C.SETTINGS)
+                    self.assertEqual(C.SETTINGS[key].category, category)
+        self.assertIn("show_advanced_settings", src)
+        self.assertIn("Advanced options…", src)
+
     def test_settings_pages_cover_all_categories(self):
         cats = {c for c, _ in C.CATEGORIES}
         for s in C.SCHEMA:

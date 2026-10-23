@@ -279,7 +279,7 @@ def target_scales(kinds, pointer_pos, factor, reach, enabled=True):
 
 def slot_sizes(kinds, icon, scales=None, sep_width=None):
     if sep_width is None:
-        sep_width = max(6, int(icon * 0.22))
+        sep_width = max(2, int(icon * 0.22))
     scales = scales or [1.0] * len(kinds)
     return [sep_width if k == "separator" else icon * sc for k, sc in zip(kinds, scales)]
 
@@ -366,8 +366,40 @@ class Geometry:
 
 def compute_geometry(kinds, *, icon, spacing, padding, margin, shadow_size, edge, alignment,
                      indicator_size, indicator_style, magnify, factor, reach, bounce,
-                     labels):
+                     labels, max_main=None):
+    """Compute dock geometry, optionally fitting the main axis inside a monitor.
+
+    max_main is the maximum window width for top/bottom docks or height for
+    left/right docks. If contents would exceed it, icon, spacing and padding are
+    scaled together to avoid oversized layer-shell surfaces being rejected or
+    clipped by the compositor when many items are pinned.
+    """
     S = int(shadow_size)
+    if max_main is not None:
+        limit = max(1.0, float(max_main))
+        S = min(S, max(0, int((limit - 1) / 2)))
+        original_icon = float(icon)
+        original_spacing = float(spacing)
+        original_padding = float(padding)
+
+        def fitted(scale):
+            fitted_icon = max(1.0, original_icon * scale)
+            fitted_spacing = original_spacing * scale
+            fitted_padding = original_padding * scale
+            fitted_max = max_dock_length(
+                kinds, fitted_icon, fitted_spacing, fitted_padding,
+                factor, reach, magnify)
+            return fitted_icon, fitted_spacing, fitted_padding, fitted_max + 2 * S
+
+        if fitted(1.0)[3] > limit:
+            lo, hi = 0.0, 1.0
+            for _ in range(32):
+                mid = (lo + hi) / 2.0
+                if fitted(mid)[3] <= limit:
+                    lo = mid
+                else:
+                    hi = mid
+            icon, spacing, padding, _need = fitted(lo)
     ind_room = 0 if indicator_style == "none" else indicator_size + 4
     thick = icon + 2 * padding + ind_room
     side_off = min(margin, S)
