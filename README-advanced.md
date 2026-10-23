@@ -20,7 +20,9 @@ GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without re
 - **Fluid interactions** — hover magnification, smooth animations, launch bounce, app-name labels, and drag-to-reorder launchers.
 - **Wayland-native placement** — layer-shell anchoring, edge and alignment controls, margins, exclusive-zone handling, and per-monitor settings.
 - **Flexible behavior** — auto-hide, hide on fullscreen, optional overlay stacking, and login autostart controls.
-- **Graphical settings** — adjust colors, gradients, opacity, borders, shadows, radius, sizing, animations, indicators, themes, launchers, and monitor overrides with a live preview.
+- **Built-in widgets** — add a live digital clock, calendar popup, playerctl music controls, and folder menus from Settings → Launchers → Add other.
+- **Badges and plugins** — configure per-item badges and load explicitly allowlisted user Python plugins with an in-memory usage API.
+- **Graphical settings** — adjust colors, gradients, opacity, borders, shadows, radius, sizing, animations, indicators, themes, launchers, widgets/extensions, and monitor overrides with a live preview.
 - **Multiple looks** — Smoky Glass, Dark, Light, macOS-inspired, Liquid Glass-inspired, Purple/Pink, and Custom themes.
 
 ## Screenshots
@@ -148,6 +150,39 @@ GlassDock also writes commented example bindings to `~/.config/glassdock/sway.co
 ## Configuration
 
 Settings are stored in `~/.config/glassdock/config.json`. The configuration is validated and migrated on load; unknown or invalid values fall back to defaults. Changes made in the Settings app apply live, and manual edits are picked up automatically.
+
+## Widgets and extensions
+
+All built-in items are integrated into the normal dock model and can be added in **Settings → Launchers → Add other**. Clock and calendar use native Cairo-drawn icons. Clock format and seconds, calendar week start, music refresh, folder hidden-file visibility, badge limits, and plugin policy are available in **Settings → Widgets & Extensions**.
+
+Music controls call `playerctl` directly without a shell. Install `playerctl` and use an MPRIS-compatible player; if no player is available, controls report failure rather than pretending the action succeeded.
+
+Folder items store their directory in the main config. Clicking the item opens a GTK menu of child files/directories; each selected child opens through `xdg-open`. The folder menu filters hidden files by default and is capped by the configured item limit. Global hotkeys must be registered by the Wayland compositor, for example:
+
+```ini
+bindsym $mod+Ctrl+d exec glassdock-ctl toggle
+bindsym $mod+Ctrl+1 exec glassdock-ctl launch 1
+```
+
+Right-click a configured item and choose **Set badge count…** for a manual badge. External tools can update one by setting a 1-based row index from **Settings → Launchers** (including separator rows):
+
+```bash
+glassdock-ctl badge 2 5
+glassdock-ctl badge 2 0
+```
+
+The first command sets the badge to five (subject to the configured maximum); the second clears it.
+
+### User plugins
+
+The default plugin directory is `~/.config/glassdock/plugins/`. Copy reviewed examples into it:
+
+```bash
+mkdir -p ~/.config/glassdock/plugins
+cp examples/plugins/*.py ~/.config/glassdock/plugins/
+```
+
+Then open **Settings → Widgets & Extensions**, enable trusted plugins, and add the module names (without `.py`) to the comma-separated allowlist, for example `clock,usage`. Open **Settings → Launchers → Add other → Plugin widget…** to add an allowlisted plugin. Plugin render output is restricted to a JSON-compatible object with string label/icon fields; supported click actions are `toast`, `open_url`, and `open_path`. The plugin API is intentionally small and **is not a security sandbox**: plugins execute as the current user. Only allowlist code you have reviewed. The usage example counts activation events in memory and resets on restart.
 
 ## Transparency and blur
 
