@@ -1448,7 +1448,7 @@ class LaunchersPage(Gtk.Box):
             message(self.window, "No plugins are allowlisted",
                     "Add the filename (without .py) to the plugin allowlist after reviewing the code.")
             return
-        dlg = Gtk.Dialog(title="Add plugin widget", parent=self.window, flags=Gtk.DialogFlags.MODAL)
+        dlg = Gtk.Dialog(title="Add plugin widget", transient_for=self.window, flags=Gtk.DialogFlags.MODAL)
         dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
         dlg.add_button("Add", Gtk.ResponseType.OK)
         box = dlg.get_content_area()
