@@ -61,6 +61,16 @@ class CoverageTests(unittest.TestCase):
         self.assertIn("widget.get_allocated_height()", src)
         self.assertIn("fitted.win_main = main_extent", src)
 
+    def test_builtin_plugin_switches_are_wired_into_the_dock(self):
+        src = read("glassdock/dock.py")
+        for key in ("extensions.clock_calendar_enabled", "extensions.music_enabled",
+                    "extensions.folder_menus_enabled", "extensions.plugins_enabled"):
+            self.assertIn(key, src)
+        host = read("glassdock/dock_extensions.py")
+        self.assertIn('self.app.clock_calendar_enabled', host)
+        self.assertIn('self.app.music_enabled', host)
+        self.assertIn('self.app.folder_menus_enabled', host)
+
     def test_settings_pages_cover_all_categories(self):
         cats = {c for c, _ in C.CATEGORIES}
         for s in C.SCHEMA:

@@ -10,7 +10,11 @@ class AIPluginPromptTests(unittest.TestCase):
     def test_plugins_panel_exposes_copyable_ai_prompt(self):
         source = (ROOT / "glassdock" / "extension_settings.py").read_text(encoding="utf-8")
         self.assertIn("PLUGIN_AI_PROMPT", source)
+        self.assertIn('S.text_button("Import plugin…", self.import_plugin', source)
         self.assertIn('Gtk.Button(label="Copy AI plugin prompt…")', source)
+        self.assertIn('compile(code, source, "exec")', source)
+        self.assertIn('self.data["plugins"][module] = {"enabled": False, "config": {}}', source)
+        self.assertIn('S.label("INSTALLED PLUGINS"', source)
         self.assertIn('dialog.add_button("Copy prompt", Gtk.ResponseType.APPLY)', source)
         self.assertIn("clipboard.set_text", source)
 

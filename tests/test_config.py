@@ -58,6 +58,12 @@ class ConfigTests(unittest.TestCase):
         out = C.validate_items(items)
         self.assertEqual([i["type"] for i in out], ["app", "launcher", "separator", "special"])
 
+    def test_builtin_plugin_enable_defaults(self):
+        cfg = C.default_config()
+        self.assertTrue(C.get_path(cfg, "extensions.clock_calendar_enabled"))
+        self.assertTrue(C.get_path(cfg, "extensions.music_enabled"))
+        self.assertTrue(C.get_path(cfg, "extensions.folder_menus_enabled"))
+
     def test_extension_item_validation_and_badges(self):
         items = C.validate_items([
             {"type": "folder", "path": "~/Documents", "name": "Docs", "badge_count": 4},

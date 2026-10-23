@@ -94,18 +94,26 @@ class ExtrasHost:
     def reload(self, rebuild=True):
         self.data = X.load()
         self.overrides_cache.clear()
-        enabled = [name for name, conf in self.data["plugins"].items()
-                   if isinstance(conf, dict) and conf.get("enabled") is True]
+        config_get = D.getter(self.app.cfg)
+        loader_enabled = bool(config_get("extensions.plugins_enabled"))
+        enabled = [
+            name for name, conf in self.data["plugins"].items()
+            if loader_enabled and isinstance(conf, dict) and conf.get("enabled") is True
+        ]
         self.plugin_classes, self.plugin_errors = P.discover(plugin_search_dirs(self.app.cfg), allowlist=enabled)
         old, self.widgets = self.widgets, {}
         for e in self.data["extras"]:
             wid, t = e.get("id"), e.get("type")
             if t in WIDGET_TYPES:
+                if t in ("analog_clock", "digital_clock", "calendar") and not self.app.clock_calendar_enabled:
+                    continue
+                if t == "music" and not self.app.music_enabled:
+                    continue
                 prev = old.get(wid)
                 w = prev if prev is not None and prev.TYPE == t else WIDGET_TYPES[t](wid, X.widget_cfg(self.data, wid, t), self)
                 w.cfg = X.widget_cfg(self.data, wid, t)
                 self.widgets[wid] = w
-            elif t == "folder":
+            elif t == "folder" and self.app.folder_menus_enabled:
                 self.widgets[wid] = FolderWidget(wid, X.folder_cfg(self.data, wid), self)
         active_plugins = set()
         for name, conf in self.data["plugins"].items():
@@ -441,8 +449,19 @@ class DockAppX(D.DockApp):
             HOST[0] = self.host
         g = D.getter(self.cfg)
         self.host.icon_pct = g("appearance.icon_radius")
-        self.items = self.host.inject(M.build_items(self.cfg["items"], self.entries, self.windows,
-                                                    g("behavior.show_running_unpinned")))
+        items = M.build_items(self.cfg["items"], self.entries, self.windows,
+                              g("behavior.show_running_unpinned"))
+        if not self.clock_calendar_enabled:
+            items = [item for item in items
+                     if not (item.kind == "widget" and item.extension in ("clock", "calendar"))]
+        if not self.music_enabled:
+            items = [item for item in items
+                     if not (item.kind == "widget" and item.extension == "music")]
+        if not self.folder_menus_enabled:
+            items = [item for item in items if item.kind != "folder"]
+        if not g("extensions.plugins_enabled"):
+            items = [item for item in items if item.kind != "plugin"]
+        self.items = self.host.inject(items)
         outs = self.outputs or self.fallback_outputs()
         wanted = {o["name"]: o for o in outs if C.monitor_enabled(self.cfg, o["name"])}
         for name in list(self.docks):

@@ -151,7 +151,12 @@ SCHEMA = [
     _s("behavior.terminal_command", "Terminal for terminal apps", "behavior", "text", "foot",
        help="Used for launchers that need a terminal (run as: terminal -e command)."),
 
-    # ---- Widgets & Extensions
+    # ---- Built-in plugins and user plugin controls
+    _s("extensions.clock_calendar_enabled", "Enable Clock & Calendar", "behavior", "bool", True),
+    _s("extensions.music_enabled", "Enable Music Controls", "behavior", "bool", True),
+    _s("extensions.folder_menus_enabled", "Enable Folder Menus", "behavior", "bool", True),
+
+    # ---- Clock, music, folders and plugin configuration
     _s("extensions.clock_format", "Clock format", "behavior", "choice", "24h",
        choices=(("24h", "24-hour"), ("12h", "12-hour"))),
     _s("extensions.clock_show_seconds", "Show seconds in the clock label", "behavior", "bool", False),

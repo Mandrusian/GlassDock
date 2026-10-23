@@ -1270,6 +1270,9 @@ class DockApp:
         self.last_self_write = 0.0
         self.music_controller = None
         self.plugin_manager = None
+        self.clock_calendar_enabled = True
+        self.music_enabled = True
+        self.folder_menus_enabled = True
         self.extension_tick_id = None
         self._music_refresh_pending = False
         self._music_action_pending = False
@@ -1655,11 +1658,17 @@ class DockApp:
 
     def configure_extensions(self):
         g = getter(self.cfg)
-        executable = g("extensions.music_playerctl").strip() or "playerctl"
-        try:
-            self.music_controller = E.MusicController(executable)
-        except (TypeError, ValueError) as exc:
-            log("Music controller unavailable: %s" % exc)
+        self.clock_calendar_enabled = bool(g("extensions.clock_calendar_enabled"))
+        self.music_enabled = bool(g("extensions.music_enabled"))
+        self.folder_menus_enabled = bool(g("extensions.folder_menus_enabled"))
+        if self.music_enabled:
+            executable = g("extensions.music_playerctl").strip() or "playerctl"
+            try:
+                self.music_controller = E.MusicController(executable)
+            except (TypeError, ValueError) as exc:
+                log("Music controller unavailable: %s" % exc)
+                self.music_controller = None
+        else:
             self.music_controller = None
         directory = g("extensions.plugin_directory").strip() or os.path.join(C.config_dir(), "plugins")
         allowlist = [part.strip() for part in g("extensions.plugin_allowlist").split(",") if part.strip()]
