@@ -1,0 +1,25 @@
+{
+  "edge": "bottom",
+  "height": 64,
+  "icon_width": 88,
+  "gap": 8,
+  "margin": 12,
+  "reserve_space": true,
+  "background": "#202027",
+  "foreground": "#ffffff",
+  "accent": "#8ab4ff",
+  "launchers": [
+    {
+      "name": "Terminal",
+      "command": "xterm"
+    },
+    {
+      "name": "Browser",
+      "command": "firefox"
+    },
+    {
+      "name": "Files",
+      "command": "thunar"
+    }
+  ]
+}
