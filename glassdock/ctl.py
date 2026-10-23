@@ -13,7 +13,8 @@ USAGE = """usage: glassdock-ctl <command> [arg]
   toggle          show/hide the dock (overrides auto-hide until 'auto')
   show | hide     force the dock visible / hidden
   auto            return to automatic show/hide behavior
-  launch N        activate the Nth item (1-based, separators not counted)
+  launch N        activate the Nth visible item (1-based, separators not counted)
+  badge N COUNT   set configured item N's badge count (Settings > Launchers order)
   quit            stop the dock
 """
 
@@ -25,10 +26,15 @@ def main(argv=None):
         return 0
     msg = {"cmd": argv[0]}
     if argv[0] == "launch":
-        if len(argv) < 2:
-            print("launch needs an index", file=sys.stderr)
+        if len(argv) != 2:
+            print("launch needs one item index", file=sys.stderr)
             return 2
         msg["index"] = argv[1]
+    elif argv[0] == "badge":
+        if len(argv) != 3:
+            print("badge needs an item index and a non-negative count", file=sys.stderr)
+            return 2
+        msg["index"], msg["count"] = argv[1], argv[2]
     reply = control.send_command(msg)
     if reply is None:
         print("glassdock is not running", file=sys.stderr)
