@@ -12,9 +12,13 @@ import sys
 import time
 from pathlib import Path
 
+# Termux:X11 normally uses display :0. If this is Termux and DISPLAY
+# was not inherited (for example, when launched from a shell), select it.
+if "TERMUX_VERSION" in os.environ or os.environ.get("PREFIX", "").startswith("/data/data/com.termux/"):
+    os.environ.setdefault("DISPLAY", ":0")
+
 try:
     from Xlib import X, Xatom, display
-    from Xlib.protocol import event
 except ImportError:
     sys.exit("Missing python-xlib. Run: python -m pip install --user python-xlib")
 
@@ -192,6 +196,11 @@ def main():
     try:
         X11Dock(cfg).run()
     except Exception as exc:
+        if "TERMUX_VERSION" in os.environ or os.environ.get("PREFIX", "").startswith("/data/data/com.termux/"):
+            sys.exit(
+                f"GlassDock X11 could not connect to Termux:X11 at DISPLAY={os.environ.get('DISPLAY', '(unset)')}: {exc}. "
+                "Make sure the Termux:X11 app is running and start i3 from its session."
+            )
         sys.exit(f"GlassDock X11 failed: {exc}. Check that DISPLAY points to a working X11 server.")
 
 
