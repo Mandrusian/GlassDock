@@ -19,7 +19,14 @@ import gi
 
 gi.require_version("Gtk", "3.0")
 gi.require_version("Gdk", "3.0")
+from gi.repository import GLib as _GLib  # noqa: E402
+
+# The dock matches a window to its desktop entry by app_id. On Wayland GTK takes it from
+# the program class / prgname, which must therefore equal the desktop file's id.
+# Without this the window is unmatched and the dock draws a green letter tile.
+_GLib.set_prgname("glassdock-settings")
 from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
+Gdk.set_program_class("glassdock-settings")
 
 import cairo  # noqa: E402
 
@@ -30,6 +37,7 @@ from .core.colors import normalize_color, parse_color, with_alpha  # noqa: E402
 from .core.desktop import is_launchable, load_entries  # noqa: E402
 from .core.icons import candidate_names, find_icon_file  # noqa: E402
 from .core.themes import CUSTOM, THEMES, theme_label  # noqa: E402
+from .core import usertheme as UT  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -195,7 +203,7 @@ class Store:
             return
         C.set_path(self.cfg, key, value)
         if key in C.THEME_KEYS:
-            self.cfg["theme"] = next((n for n in THEMES if C.matches_theme(self.cfg, n)), CUSTOM)
+            self.cfg["theme"] = self.detect_theme()
         self.changed()
 
     def reset(self, key):
@@ -208,7 +216,104 @@ class Store:
         self.changed()
 
     def apply_theme(self, name):
-        C.apply_theme(self.cfg, name)
+        if name == CUSTOM or name in THEMES:
+            C.apply_theme(self.cfg, name)
+        else:
+            info = self.user_themes().get(name)
+            if info is None:
+                return
+            UT.apply_values(self.cfg, info, name)
+        self.changed()
+
+    # ---- user themes (see core/usertheme.py). Methods that can fail raise UT.ThemeError
+    #      with a message that is safe to show the user.
+    def user_themes(self):
+        cache = getattr(self, "_user_themes", None)
+        if cache is None:
+            cache, self.theme_problems = UT.list_user_themes()
+            self._user_themes = cache
+        return cache
+
+    def reload_user_themes(self):
+        self._user_themes = None
+        return self.user_themes()
+
+    def all_themes(self):
+        """{name: {'label','description','values','user'}}: built-ins first, then the user's."""
+        return UT.all_themes(self.user_themes())
+
+    def theme_label(self, name):
+        return UT.label_for(name, self.user_themes())
+
+    def detect_theme(self):
+        for n in THEMES:
+            if C.matches_theme(self.cfg, n):
+                return n
+        for n, info in self.user_themes().items():
+            if UT.matches(self.cfg, info):
+                return n
+        return CUSTOM
+
+    def save_current_theme(self, label, description=""):
+        name = UT.save_theme(self.cfg, label, description)
+        self.reload_user_themes()
+        self.cfg["theme"] = name
+        self.changed()
+        return name
+
+    def import_theme(self, path, apply=False):
+        """Returns (name, info); info['ignored'] lists settings that were skipped."""
+        name, info = UT.import_file(path)
+        self.reload_user_themes()
+        if apply:
+            self.apply_theme(name)
+        else:
+            self.changed()
+        return name, info
+
+    def export_theme(self, name, path):
+        if name == CUSTOM:
+            info = {"label": "My theme", "description": "", "values": UT.current_values(self.cfg)}
+        else:
+            info = self.all_themes().get(name)
+        if info is None:
+            raise UT.ThemeError("That theme no longer exists.")
+        UT.export_file(info, path)
+
+    def rename_theme(self, name, label):
+        UT.rename_theme(name, label)
+        self.reload_user_themes()
+        self.changed()
+
+    def delete_theme(self, name):
+        removed = UT.delete_theme(name)
+        self.reload_user_themes()
+        if self.cfg.get("theme") == name:
+            self.cfg["theme"] = CUSTOM
+        self.changed()
+        return removed
+
+    def export_settings(self, path):
+        """Write the whole working config (appearance, behavior, launchers, monitors) to `path`."""
+        C.save_config(self.cfg, path)
+
+    def import_settings(self, path):
+        """Replace appearance and behavior from a settings file. Launchers and monitors are kept.
+        Raises ValueError with a message that is safe to show."""
+        bad = "That isn't a readable GlassDock settings file."
+        try:
+            if os.path.getsize(path) > 1024 * 1024:
+                raise ValueError("That file is too large to be a settings file.")
+            with open(path, "r", encoding="utf-8") as fh:
+                raw = json.load(fh)
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ValueError(bad) from exc
+        if not isinstance(raw, dict):
+            raise ValueError(bad)
+        new = C.validate(C.migrate(raw), self.entries)
+        new["items"], new["monitors"] = self.cfg["items"], self.cfg["monitors"]
+        self.cfg = new
+        self.cfg["theme"] = self.detect_theme()
         self.changed()
 
     def set_items(self, items):
@@ -667,12 +772,100 @@ class LivePreview(Gtk.Box):
 
 # --------------------------------------------------------------- theme cards
 
+# ---------------------------------------------------------- theme dialogs / page
+
+def message(parent, text, secondary="", kind=Gtk.MessageType.INFO, buttons=Gtk.ButtonsType.OK, accept=None):
+    dlg = Gtk.MessageDialog(transient_for=parent, modal=True, message_type=kind, buttons=buttons, text=text)
+    if secondary:
+        dlg.format_secondary_text(secondary)
+    if accept:
+        btn = dlg.add_button(accept, Gtk.ResponseType.OK)
+        style(btn, "destructive-action")
+    resp = dlg.run()
+    dlg.destroy()
+    return resp
+
+
+def json_chooser(parent, title, save=False, name=""):
+    dlg = Gtk.FileChooserNative(title=title, transient_for=parent,
+                                action=Gtk.FileChooserAction.SAVE if save else Gtk.FileChooserAction.OPEN,
+                                accept_label="Export" if save else "Open", cancel_label="Cancel")
+    flt = Gtk.FileFilter()
+    flt.set_name("JSON files")
+    flt.add_pattern("*.json")
+    dlg.add_filter(flt)
+    if save:
+        dlg.set_do_overwrite_confirmation(True)
+        dlg.set_current_name(name)
+    return dlg
+
+
+class ThemeNameDialog(Gtk.Dialog):
+    """Name (and optionally describe) a theme, with a live picture of what is being saved."""
+
+    def __init__(self, parent, title, accept, name="", desc=None, store=None):
+        super().__init__(title=title, transient_for=parent, modal=True)
+        self.add_buttons("Cancel", Gtk.ResponseType.CANCEL, accept, Gtk.ResponseType.OK)
+        self.set_default_response(Gtk.ResponseType.OK)
+        box = self.get_content_area()
+        box.set_spacing(10)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(box, "set_margin_" + side)(16)
+        if store is not None:
+            area = style(Gtk.DrawingArea(), "md-preview")
+            area.set_size_request(320, 110)
+
+            def draw(w, cr):
+                width, height = w.get_allocated_width(), w.get_allocated_height()
+                cr.save()
+                _rounded(cr, 0, 0, width, height, 14)
+                cr.clip()
+                draw_dock_preview(cr, width, height, store.get, compact=True)
+                cr.restore()
+                return False
+            area.connect("draw", draw)
+            box.pack_start(area, False, False, 0)
+        self.name = Gtk.Entry()
+        self.name.set_max_length(60)
+        self.name.set_placeholder_text("Theme name, e.g. Midnight Blue")
+        self.name.set_text(name)
+        self.name.set_activates_default(True)
+        box.pack_start(self.name, False, False, 0)
+        self.desc = None
+        if desc is not None:
+            self.desc = Gtk.Entry()
+            self.desc.set_max_length(200)
+            self.desc.set_placeholder_text("Description (optional)")
+            self.desc.set_text(desc)
+            self.desc.set_activates_default(True)
+            box.pack_start(self.desc, False, False, 0)
+        self.ok = self.get_widget_for_response(Gtk.ResponseType.OK)
+        style(self.ok, "suggested-action")
+        self.name.connect("changed", self.check)
+        self.check()
+        self.show_all()
+        self.name.grab_focus()
+
+    def check(self, *_):
+        self.ok.set_sensitive(bool(self.name.get_text().strip()))
+
+    def values(self):
+        return self.name.get_text().strip(), (self.desc.get_text().strip() if self.desc else "")
+
+
 class ThemesPage(Gtk.Box):
     def __init__(self, store):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.store = store
-        self.pack_start(heading("Themes", "Pick a starting point. Any edit under Colors & Style switches to Custom."),
-                        False, False, 0)
+        self.names = []
+        self.cards = {}
+        self.pack_start(heading("Themes", "Pick a look, save your own, or share one as a file."), False, False, 0)
+        bar = style(Gtk.Box(spacing=6), "md-toolbar")
+        bar.set_margin_bottom(14)
+        bar.pack_start(text_button("Save current look…", lambda *_: self.save_current(), suggested=True), False, False, 0)
+        bar.pack_start(text_button("Import theme…", lambda *_: self.import_file()), False, False, 0)
+        bar.pack_start(text_button("Export current…", lambda *_: self.export_current()), False, False, 0)
+        self.pack_start(bar, False, False, 0)
         self.flow = Gtk.FlowBox()
         self.flow.set_selection_mode(Gtk.SelectionMode.NONE)
         self.flow.set_max_children_per_line(3)
@@ -680,34 +873,44 @@ class ThemesPage(Gtk.Box):
         self.flow.set_homogeneous(True)
         self.flow.set_row_spacing(12)
         self.flow.set_column_spacing(12)
-        self.cards = {}
-        for name in list(THEMES) + [CUSTOM]:
-            self.flow.add(self.make_card(name))
         self.pack_start(self.flow, False, False, 0)
         note = label("“Inspired” themes are visual homages, not copies. True background blur needs SwayFX "
-                     "(Colors & Style → Background blur); on plain Sway the dock is translucent only.",
+                     "(Colors & Style → Background blur); on plain Sway the dock is translucent only. "
+                     "Imported themes can only change appearance, never commands or launchers.",
                      "md-page-sub", wrap=True)
         note.set_margin_top(18)
         self.pack_start(note, False, False, 0)
+        self.rebuild()
         store.listen(self.refresh)
-        self.refresh()
+
+    # --- cards
+    def rebuild(self):
+        for child in self.flow.get_children():
+            child.destroy()
+        self.cards = {}
+        self.names = list(self.store.all_themes()) + [CUSTOM]
+        for name in self.names:
+            self.flow.add(self.make_card(name))
+        self.flow.show_all()
+        self.update_active()
 
     def make_card(self, name):
+        info = self.store.all_themes().get(name)
         btn = style(Gtk.Button(), "md-theme-card")
         btn.set_relief(Gtk.ReliefStyle.NONE)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         area = Gtk.DrawingArea()
         area.set_size_request(200, 96)
-        if name == CUSTOM:
+        if info is None:  # the live "Custom" card follows the working config
             def getter(k):
                 return self.store.get(k)
-            desc = "Your own edits."
+            desc = "Your current edits. Save them to keep this look."
         else:
-            vals = THEMES[name]["values"]
+            vals = info["values"]
 
             def getter(k, v=vals):
                 return v[k] if k in v else C.default_value(k)
-            desc = THEMES[name]["description"]
+            desc = info.get("description") or ("Your saved theme." if info.get("user") else "")
 
         def draw(w, cr, g=getter):
             width, height = w.get_allocated_width(), w.get_allocated_height()
@@ -720,7 +923,7 @@ class ThemesPage(Gtk.Box):
         area.connect("draw", draw)
         box.pack_start(area, False, False, 0)
         head = Gtk.Box(spacing=8)
-        head.pack_start(label(theme_label(name), "md-theme-name"), True, True, 0)
+        head.pack_start(label(self.store.theme_label(name), "md-theme-name"), True, True, 0)
         pill = style(Gtk.Label(label="ACTIVE"), "md-active-pill")
         pill.set_no_show_all(True)
         head.pack_end(pill, False, False, 0)
@@ -729,14 +932,52 @@ class ThemesPage(Gtk.Box):
         d.set_max_width_chars(28)
         box.pack_start(d, False, False, 0)
         btn.add(box)
-        if name == CUSTOM:
+        if info is None:
             btn.set_tooltip_text("Edit any color or style setting to use a custom look")
         else:
             btn.connect("clicked", lambda *_: self.store.apply_theme(name))
+        overlay = Gtk.Overlay()
+        overlay.add(btn)
+        menu = self.card_menu(name, info)
+        menu.set_halign(Gtk.Align.END)
+        menu.set_valign(Gtk.Align.START)
+        menu.set_margin_top(14)
+        menu.set_margin_end(14)
+        overlay.add_overlay(menu)
         self.cards[name] = (btn, area, pill)
-        return btn
+        return overlay
+
+    def card_menu(self, name, info):
+        entries = []
+        if info is None:
+            entries.append(("Save as theme…", self.save_current))
+        entries.append(("Export…", lambda: self.export(name)))
+        if info is not None and info.get("user"):
+            entries += [("Rename…", lambda: self.rename(name)), ("Delete…", lambda: self.delete(name))]
+        mb = Gtk.MenuButton()
+        mb.set_relief(Gtk.ReliefStyle.NONE)
+        mb.add(Gtk.Image.new_from_icon_name("view-more-symbolic", Gtk.IconSize.BUTTON))
+        mb.set_tooltip_text("Theme options")
+        pop = Gtk.Popover()
+        pbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(pbox, "set_margin_" + side)(6)
+        for text, cb in entries:
+            item = Gtk.ModelButton(text=text)
+            item.connect("clicked", lambda _b, f=cb: (pop.popdown(), GLib.idle_add(lambda: (f(), False)[1])))
+            pbox.pack_start(item, False, False, 0)
+        pbox.show_all()
+        pop.add(pbox)
+        mb.set_popover(pop)
+        return mb
 
     def refresh(self):
+        if list(self.store.all_themes()) + [CUSTOM] != self.names:
+            self.rebuild()
+        else:
+            self.update_active()
+
+    def update_active(self):
         cur = self.store.cfg.get("theme")
         for name, (btn, area, pill) in self.cards.items():
             ctx = btn.get_style_context()
@@ -748,6 +989,77 @@ class ThemesPage(Gtk.Box):
                 pill.hide()
             if name == CUSTOM:
                 area.queue_draw()
+
+    # --- actions
+    def win(self):
+        top = self.get_toplevel()
+        return top if isinstance(top, Gtk.Window) else None
+
+    def fail(self, exc):
+        message(self.win(), "That didn't work", str(exc), Gtk.MessageType.ERROR)
+
+    def save_current(self):
+        dlg = ThemeNameDialog(self.win(), "Save current look as a theme", "Save", desc="", store=self.store)
+        if dlg.run() == Gtk.ResponseType.OK:
+            name, desc = dlg.values()
+            try:
+                self.store.save_current_theme(name, desc)
+            except UT.ThemeError as exc:
+                dlg.destroy()
+                return self.fail(exc)
+        dlg.destroy()
+
+    def rename(self, name):
+        dlg = ThemeNameDialog(self.win(), "Rename theme", "Rename", name=self.store.theme_label(name))
+        if dlg.run() == Gtk.ResponseType.OK:
+            try:
+                self.store.rename_theme(name, dlg.values()[0])
+            except UT.ThemeError as exc:
+                dlg.destroy()
+                return self.fail(exc)
+        dlg.destroy()
+
+    def delete(self, name):
+        resp = message(self.win(), "Delete “%s”?" % self.store.theme_label(name),
+                       "Your dock keeps its current look. Only the saved theme is removed.",
+                       Gtk.MessageType.QUESTION, Gtk.ButtonsType.CANCEL, accept="Delete")
+        if resp == Gtk.ResponseType.OK:
+            try:
+                self.store.delete_theme(name)
+            except UT.ThemeError as exc:
+                self.fail(exc)
+
+    def export_current(self):
+        cur = self.store.cfg.get("theme", CUSTOM)
+        self.export(cur if cur in self.store.all_themes() else CUSTOM)
+
+    def export(self, name):
+        base = UT.slugify(self.store.theme_label(name) if name != CUSTOM else "my-theme")
+        dlg = json_chooser(self.win(), "Export theme", save=True, name=base + ".json")
+        if dlg.run() == Gtk.ResponseType.ACCEPT:
+            try:
+                self.store.export_theme(name, dlg.get_filename())
+            except UT.ThemeError as exc:
+                return self.fail(exc)
+            cb = getattr(self.store, "on_saved", None)
+            if cb:
+                cb("Exported theme to %s" % os.path.basename(dlg.get_filename()), True)
+
+    def import_file(self):
+        dlg = json_chooser(self.win(), "Import theme")
+        if dlg.run() != Gtk.ResponseType.ACCEPT:
+            return
+        try:
+            name, info = self.store.import_theme(dlg.get_filename())
+        except UT.ThemeError as exc:
+            return self.fail(exc)
+        extra = ""
+        if info["ignored"]:
+            extra = "\n\n%d setting(s) in the file aren't appearance options and were skipped." % len(info["ignored"])
+        resp = message(self.win(), "Imported “%s”" % info["label"], "Apply it to your dock now?" + extra,
+                       Gtk.MessageType.QUESTION, Gtk.ButtonsType.YES_NO)
+        if resp == Gtk.ResponseType.YES:
+            self.store.apply_theme(name)
 
 
 # ------------------------------------------------------------------ launchers
@@ -1395,7 +1707,6 @@ class SettingsWindow(Gtk.Window):
     def __init__(self, edit_index=None):
         super().__init__(title="GlassDock Settings")
         self.set_default_size(1040, 740)
-        self.set_icon_name("preferences-system")
         install_css()
         self.store = Store()
         self.store.on_saved = self.on_saved
@@ -1475,7 +1786,9 @@ class SettingsWindow(Gtk.Window):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
         for side in ("start", "end", "top", "bottom"):
             getattr(box, "set_margin_" + side)(6)
-        for text, cb in [("Reset all settings…", self.reset_all),
+        for text, cb in [("Export all settings…", self.export_settings),
+                         ("Import settings…", self.import_settings),
+                         ("Reset all settings…", self.reset_all),
                          ("Open config folder", lambda *_: subprocess.Popen(
                              ["xdg-open", C.config_dir()], start_new_session=True)),
                          ("About GlassDock", self.show_about)]:
@@ -1611,6 +1924,31 @@ class SettingsWindow(Gtk.Window):
         self.status.hide()
         return False
 
+    def export_settings(self, *_):
+        dlg = json_chooser(self, "Export all settings", save=True, name="glassdock-settings.json")
+        if dlg.run() == Gtk.ResponseType.ACCEPT:
+            try:
+                self.store.export_settings(dlg.get_filename())
+            except OSError as exc:
+                message(self, "Couldn't export", exc.strerror or str(exc), Gtk.MessageType.ERROR)
+            else:
+                self.on_saved("Exported settings to %s" % os.path.basename(dlg.get_filename()), True)
+
+    def import_settings(self, *_):
+        dlg = json_chooser(self, "Import settings")
+        if dlg.run() != Gtk.ResponseType.ACCEPT:
+            return
+        resp = message(self, "Replace your appearance and behavior settings?",
+                       "Your launchers and monitor setup are kept. Only import files you trust: "
+                       "settings can include commands, such as the Applications button command.",
+                       Gtk.MessageType.QUESTION, Gtk.ButtonsType.CANCEL, accept="Import")
+        if resp != Gtk.ResponseType.OK:
+            return
+        try:
+            self.store.import_settings(dlg.get_filename())
+        except ValueError as exc:
+            message(self, "Couldn't import", str(exc), Gtk.MessageType.ERROR)
+
     def reset_all(self, *_):
         dlg = Gtk.MessageDialog(transient_for=self, modal=True, message_type=Gtk.MessageType.QUESTION,
                                 buttons=Gtk.ButtonsType.CANCEL,
@@ -1643,6 +1981,18 @@ class SettingsWindow(Gtk.Window):
         return False
 
 
+def _set_app_icon():
+    """Window/default icon from the bundled artwork (the dock itself uses the desktop entry)."""
+    for fname in ("glassdock.svg", "glassdock.svg", "moderndock.svg"):
+        p = os.path.join(ROOT, "assets", fname)
+        if os.path.exists(p):
+            try:
+                Gtk.Window.set_default_icon_from_file(p)
+            except GLib.Error:
+                pass
+            return
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     edit_index = None
@@ -1655,6 +2005,7 @@ def main(argv=None):
     if Gdk.Display.get_default() is None:
         print("No display available.", file=sys.stderr)
         return 1
+    _set_app_icon()
     SettingsWindow(edit_index).connect("destroy", Gtk.main_quit)
     Gtk.main()
     return 0

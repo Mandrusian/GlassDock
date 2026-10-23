@@ -8,6 +8,7 @@ import copy
 import json
 import math
 import os
+import re
 import time
 from dataclasses import dataclass
 
@@ -345,7 +346,7 @@ def validate(cfg, entries=None):
         except (ValueError, TypeError):
             pass
     theme = cfg.get("theme")
-    out["theme"] = theme if (theme in THEMES or theme == CUSTOM) else CUSTOM
+    out["theme"] = theme if (theme in THEMES or theme == CUSTOM or _is_user_theme(theme)) else CUSTOM
     if "items" in cfg:
         items = validate_items(cfg["items"])
         if items is not None:
@@ -409,6 +410,13 @@ def monitor_enabled(cfg, output_name):
 
 
 # ------------------------------------------------------------- themes
+
+_USER_THEME_RE = re.compile(r"^user:[a-z0-9][a-z0-9-]{0,47}$")
+
+
+def _is_user_theme(name):
+    return isinstance(name, str) and bool(_USER_THEME_RE.match(name))
+
 
 def apply_theme(cfg, name):
     """Copy a built-in theme's values into cfg and record the theme name."""
