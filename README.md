@@ -1,4 +1,10 @@
 <h1 align="center"><img src="assets/glassdock.svg" alt="GlassDock app icon" width="56" align="middle" />&nbsp;GlassDock</h1>
+<p align="center"><strong>Quick installer</strong></p>
+
+<p align="center"><code>curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash</code></p>
+
+<p align="center"><a href="https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh">View installer source</a></p>
+
 
 <p align="center">A floating, glass-style dock for Wayland desktops.</p>
 
@@ -27,15 +33,11 @@ GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without re
 
 GlassDock does not require GNOME Shell, KDE Plasma, or X11. The dock can be translucent on supported Wayland compositors; **background blur specifically requires SwayFX** and its `layer_effects` support.
 
-## Quick installer
+## Quick installer details
 
-Run the guided installer directly from GitHub:
+The guided installer lets you install or upgrade GlassDock or GlassIcon Studio, uninstall either app, or exit without making changes.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash
-```
-
-It reads choices from your terminal even when launched with `curl | bash`, using `whiptail` or `dialog` when available and a simple prompt otherwise. Choose **Install / Upgrade GlassDock**, **Install / Upgrade GlassIcon Studio**, **Uninstall GlassDock / ModernDock**, **Uninstall GlassIcon Studio**, or **Exit**. The source checkout is kept in `~/.local/share/GlassDock` (or `$XDG_DATA_HOME/GlassDock`) so installed command links never point into a temporary directory. If it detects ModernDock, the existing migration-aware installer replaces the old dock links and launchers while preserving settings. Dependencies are optional and only installed if you opt in. Uninstall preserves project directories and user settings by default. Without a terminal, the installer exits safely unless you set `GLASSDOCK_ACTION` explicitly.
+When run from `curl | bash`, it reads input from your terminal and uses `whiptail` or `dialog` when available, falling back to a simple prompt. It keeps the source checkout in `~/.local/share/GlassDock` (or `$XDG_DATA_HOME/GlassDock`) rather than a temporary directory. If ModernDock is detected, its migration-aware installer replaces old dock links and launchers while preserving settings. Dependency installation is optional. Uninstalling preserves project directories and user settings by default. Without a terminal, the installer exits safely unless `GLASSDOCK_ACTION` is explicitly set.
 
 For a reviewed install, inspect [installer.sh](installer.sh) before running it.
 
