@@ -4,7 +4,7 @@
 import re
 
 _MODIFIERS = {"Super", "Ctrl", "Alt", "Shift"}
-_KEY_PATTERN = re.compile(r"(?:[A-Za-z0-9]|F(?:[1-9]|1[0-2])|Space|Escape|Return)\\Z")
+_KEY_PATTERN = re.compile(r"(?:[A-Za-z0-9]|F(?:[1-9]|1[0-2])|Space|Escape|Return)\Z")
 
 
 def _integer(value, label):
@@ -12,7 +12,7 @@ def _integer(value, label):
         raise ValueError(f"{label} must be an integer")
     if isinstance(value, int):
         return value
-    if isinstance(value, str) and re.fullmatch(r"[+-]?\\d+", value.strip()):
+    if isinstance(value, str) and re.fullmatch(r"[+-]?\d+", value.strip()):
         return int(value.strip())
     raise ValueError(f"{label} must be an integer")
 
