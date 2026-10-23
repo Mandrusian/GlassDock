@@ -1326,6 +1326,15 @@ class DockApp:
                 return {"ok": False, "error": "launch needs a numeric index (1-based)"}
             GLib.idle_add(self.launch_index, n)
             return {"ok": True}
+        if cmd == "badge":
+            try:
+                index, count = int(msg.get("index")), int(msg.get("count"))
+            except (TypeError, ValueError):
+                return {"ok": False, "error": "badge needs numeric index and count"}
+            if not 1 <= index <= len((self.cfg or {}).get("items", [])) or count < 0:
+                return {"ok": False, "error": "badge index is 1-based in Settings > Launchers and count must be non-negative"}
+            GLib.idle_add(self.set_badge_config, index - 1, count)
+            return {"ok": True}
         if cmd == "status":
             return {"ok": True, "version": __version__, "sway_ipc": self.sway_ok,
                     "outputs": sorted(list(self.docks)), "blur": self.blur_state,
@@ -1395,6 +1404,11 @@ class DockApp:
             elif result is not None:
                 toast(str(result)[:200])
             return
+        if self.plugin_manager is not None and item.kind in ("app", "launcher"):
+            try:
+                self.plugin_manager.stats.record_open(item.key)
+            except ValueError:
+                pass
         if item.kind == "special":
             if item.special == "apps":
                 try:
@@ -1519,6 +1533,15 @@ class DockApp:
             toast("Music control failed. Check playerctl and your media player.")
         else:
             self.refresh_extensions()
+
+    def set_badge_config(self, idx, count):
+        items = (self.cfg or {}).get("items", [])
+        if not 0 <= idx < len(items):
+            return False
+        maximum = getter(self.cfg)("extensions.badge_max_count")
+        items[idx]["badge_count"] = min(maximum, count)
+        self.save_cfg()
+        return False
 
     def edit_badge(self, item):
         idx = item.cfg_index
