@@ -58,6 +58,23 @@ class ConfigTests(unittest.TestCase):
         out = C.validate_items(items)
         self.assertEqual([i["type"] for i in out], ["app", "launcher", "separator", "special"])
 
+    def test_extension_item_validation_and_badges(self):
+        items = C.validate_items([
+            {"type": "folder", "path": "~/Documents", "name": "Docs", "badge_count": 4},
+            {"type": "widget", "kind": "clock"},
+            {"type": "widget", "kind": "clock"},
+            {"type": "widget", "kind": "invalid"},
+            {"type": "plugin", "name": "example_clock"},
+            {"type": "plugin", "name": "../unsafe"},
+            {"type": "app", "id": "browser.desktop", "badge_count": True},
+            {"type": "launcher", "name": "Music", "exec": "playerctl", "badge_count": 1200000},
+        ])
+        self.assertEqual([item["type"] for item in items], ["folder", "widget", "plugin", "app", "launcher"])
+        self.assertEqual(items[0]["badge_count"], 4)
+        self.assertEqual(sum(item.get("kind") == "clock" for item in items), 1)
+        self.assertEqual(items[-1]["badge_count"], 999999)
+        self.assertNotIn("badge_count", items[-2])
+
     def test_migration_v0(self):
         old = {"icon_size": 64, "edge": "left", "autohide": True, "pinned": ["firefox.desktop"]}
         v = C.validate(C.migrate(old))
