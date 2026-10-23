@@ -31,7 +31,7 @@ import cairo  # noqa: E402
 
 from . import __version__  # noqa: E402
 from .core import config as C  # noqa: E402
-from .core import control, model as M, sway  # noqa: E402
+from .core import control, extensions as E, model as M, sway  # noqa: E402
 from .core.envutil import child_env  # noqa: E402
 from .core.colors import parse_color, with_alpha  # noqa: E402
 from .core.desktop import expand_exec, load_entries  # noqa: E402
@@ -98,6 +98,75 @@ def draw_builtin(cr, kind, x, y, s, pct=None):
         cr.fill()
         rrect(cr, bx + bw * 0.32, by - s * 0.12, bw * 0.36, s * 0.05, s * 0.02)
         cr.fill()
+
+
+
+def draw_extension_icon(cr, kind, x, y, s, pct=None):
+    """Draw dependency-free glyphs for the built-in widgets and folders."""
+    top, bottom = (0.40, 0.50, 0.68), (0.20, 0.27, 0.40)
+    if kind == "calendar":
+        top, bottom = (0.42, 0.52, 0.66), (0.19, 0.25, 0.37)
+    elif kind == "music":
+        top, bottom = (0.51, 0.40, 0.72), (0.27, 0.20, 0.43)
+    elif kind == "folder":
+        top, bottom = (0.83, 0.67, 0.36), (0.61, 0.42, 0.18)
+    _tile(cr, x, y, s, top, bottom, pct)
+    cr.save()
+    cr.set_line_cap(cairo.LINE_CAP_ROUND)
+    cr.set_line_join(cairo.LINE_JOIN_ROUND)
+    cr.set_source_rgba(1, 1, 1, 0.94)
+    if kind == "clock":
+        cx, cy, r = x + s / 2, y + s / 2, s * 0.30
+        cr.set_line_width(max(1.5, s * 0.045))
+        cr.arc(cx, cy, r, 0, 2 * math.pi)
+        cr.stroke()
+        cr.move_to(cx, cy)
+        cr.line_to(cx, cy - r * 0.64)
+        cr.move_to(cx, cy)
+        cr.line_to(cx + r * 0.52, cy + r * 0.12)
+        cr.stroke()
+    elif kind == "calendar":
+        bx, by, bw, bh = x + s * 0.21, y + s * 0.22, s * 0.58, s * 0.56
+        rrect(cr, bx, by, bw, bh, s * 0.06)
+        cr.set_line_width(max(1.0, s * 0.035))
+        cr.stroke()
+        cr.move_to(bx, by + bh * 0.22)
+        cr.line_to(bx + bw, by + bh * 0.22)
+        cr.stroke()
+        for row in range(2):
+            for col in range(3):
+                cx = bx + bw * (0.23 + col * 0.27)
+                cy = by + bh * (0.42 + row * 0.25)
+                cr.rectangle(cx, cy, s * 0.045, s * 0.045)
+                cr.fill()
+        for cx in (bx + bw * 0.28, bx + bw * 0.72):
+            cr.move_to(cx, by - s * 0.035)
+            cr.line_to(cx, by + bh * 0.11)
+        cr.stroke()
+    elif kind == "music":
+        cr.set_line_width(max(2.0, s * 0.06))
+        cr.move_to(x + s * 0.61, y + s * 0.27)
+        cr.line_to(x + s * 0.61, y + s * 0.63)
+        cr.line_to(x + s * 0.42, y + s * 0.68)
+        cr.stroke()
+        cr.move_to(x + s * 0.61, y + s * 0.29)
+        cr.line_to(x + s * 0.77, y + s * 0.25)
+        cr.line_to(x + s * 0.77, y + s * 0.60)
+        cr.stroke()
+        cr.arc(x + s * 0.38, y + s * 0.68, s * 0.085, 0, 2 * math.pi)
+        cr.fill()
+        cr.arc(x + s * 0.73, y + s * 0.61, s * 0.085, 0, 2 * math.pi)
+        cr.fill()
+    elif kind == "folder":
+        cr.move_to(x + s * 0.18, y + s * 0.34)
+        cr.line_to(x + s * 0.44, y + s * 0.34)
+        cr.line_to(x + s * 0.52, y + s * 0.43)
+        cr.line_to(x + s * 0.80, y + s * 0.43)
+        cr.line_to(x + s * 0.75, y + s * 0.72)
+        cr.line_to(x + s * 0.22, y + s * 0.72)
+        cr.close_path()
+        cr.fill()
+    cr.restore()
 
 
 def draw_letter_tile(cr, name, x, y, s, pct=None):
@@ -627,6 +696,10 @@ class DockWindow(Gtk.Window):
             x, y, w, h = M.place(edge, W, H, m, c + lift, s, s)
             if it.special in ("apps", "trash"):
                 draw_builtin(cr, it.special, x, y, s, icon_pct)
+            elif it.kind == "widget":
+                draw_extension_icon(cr, it.extension, x, y, s, icon_pct)
+            elif it.kind == "folder" and it.icon in ("", "folder", "folder-symbolic"):
+                draw_extension_icon(cr, "folder", x, y, s, icon_pct)
             else:
                 res = icons.get_item(it, max_px, scale_dev, self.get_window())
                 if res is not None:
@@ -642,8 +715,25 @@ class DockWindow(Gtk.Window):
                     cr.restore()
                 else:
                     draw_letter_tile(cr, it.name, x, y, s, icon_pct)
+            if g("extensions.badges_enabled") and it.badge_count > 0:
+                badge = E.badge_text(it.badge_count, g("extensions.badge_max_count"))
+                if badge:
+                    layout_badge = PangoCairo.create_layout(cr)
+                    layout_badge.set_font_description(Pango.FontDescription(
+                        "Sans Bold %d" % max(7, int(s * 0.17))))
+                    layout_badge.set_text(badge, -1)
+                    tw, th = layout_badge.get_pixel_size()
+                    bw, bh = max(s * 0.28, tw + s * 0.14), max(s * 0.25, th + s * 0.08)
+                    bx, by = x + s * 0.58, y + s * 0.02
+                    rrect(cr, bx, by, bw, bh, bh / 2.0)
+                    cr.set_source_rgba(0.92, 0.20, 0.27, 1.0)
+                    cr.fill()
+                    cr.set_source_rgba(1, 1, 1, 1)
+                    cr.move_to(bx + (bw - tw) / 2.0, by + (bh - th) / 2.0)
+                    PangoCairo.show_layout(cr, layout_badge)
             if it.key == self.hover_key:
-                hover_item = (it, m + s / 2.0, c + s)
+                hover_text = it.extension_text if it.extension_text else it.name
+                hover_item = (it, m + s / 2.0, c + s, hover_text)
 
             # running indicators
             marks = M.indicator_layout(len(it.windows), it.active, ind_style)
@@ -679,7 +769,7 @@ class DockWindow(Gtk.Window):
 
         if hover_item is not None and g("appearance.show_labels") and self.progress > 0.95 \
                 and self.drag is None:
-            self.draw_label(cr, W, H, hover_item[0].name, hover_item[1], hover_item[2])
+            self.draw_label(cr, W, H, hover_item[3], hover_item[1], hover_item[2])
         return False
 
     # ------------------------------------------------------------ drag & drop
@@ -839,8 +929,13 @@ class DockWindow(Gtk.Window):
             return True
         it = self.item_at(*self.canon(ev))
         if it is not None and it.key == self.press_key:
-            new = ev.button == 2 or bool(ev.state & Gdk.ModifierType.SHIFT_MASK)
-            self.app.activate(it, new_instance=new, dock=self)
+            if it.kind == "folder":
+                self.show_folder_menu(it, ev)
+            elif it.kind == "widget" and it.extension in ("clock", "calendar"):
+                self.show_calendar_menu(it, ev)
+            else:
+                new = ev.button == 2 or bool(ev.state & Gdk.ModifierType.SHIFT_MASK)
+                self.app.activate(it, new_instance=new, dock=self)
         self.press_key = None
         self.press_item = None
         return True
