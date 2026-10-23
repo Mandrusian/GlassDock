@@ -511,6 +511,33 @@ install_dock() {
   printf '\n  %sStart%s     glassdock &\n  %sSettings%s  glassdock-settings\n  %sStatus%s    glassdock-ctl status\n  %sLog%s       %s\n\n' "$B" "$X" "$B" "$X" "$B" "$X" "$B" "$X" "$LOG" >&2
 }
 
+install_x11_dock() {
+  step "Installing GlassDock X11 backend"
+  choose_source
+  prepare_source
+  local script="$DEST/x11-support/glassdock-x11.py"
+  local deps="$DEST/x11-support/install-deps.sh"
+  local xconf="$CONF/glassdock-x11"
+  [ "$DRY" = 1 ] || [ -f "$script" ] || die "X11 backend not found at $script."
+  [ "$DRY" = 1 ] || [ -f "$deps" ] || die "X11 dependency installer not found at $deps."
+  note "This installs the standalone X11 dock for i3 and other X11 window managers."
+  note "It does not replace the existing Wayland GlassDock."
+  confirm "Install the X11 backend and its Python dependency?" y || { info "Cancelled."; return 0; }
+  run bash "$deps"
+  run mkdir -p "$BIN" "$xconf"
+  run cp "$script" "$BIN/glassdock-x11"
+  run chmod +x "$BIN/glassdock-x11"
+  if [ ! -e "$xconf/config.json" ] && [ -f "$DEST/x11-support/example-config.json" ]; then
+    run cp "$DEST/x11-support/example-config.json" "$xconf/config.json"
+  fi
+  ok "X11 backend installed as $BIN/glassdock-x11."
+  note "Run: glassdock-x11"
+  note "For i3 autostart, add to ~/.config/i3/config:"
+  note "  exec_always --no-startup-id $BIN/glassdock-x11"
+  note "Config: $xconf/config.json"
+  restore_stash
+}
+
 install_glassicon() {
   preflight
   choose_source
@@ -604,10 +631,11 @@ usage() {
 GlassDock installer
 
 Usage: installer.sh [options]
-  --action NAME    install | glassicon | uninstall | uninstall-glassicon | status
+  --action NAME    install | glassicon | x11 | uninstall | uninstall-glassicon | status
   --dir PATH       where the managed source checkout lives (default: $DATA/GlassDock)
   --branch NAME    branch to install (default: $BRANCH)
   --deps           also install dependencies (uses pkg on Termux; otherwise system package manager)
+  --action x11     install the standalone X11 dock backend for i3/X11
   -y, --yes        accept the safe default for every question (no prompts)
   -n, --dry-run    show what would happen without changing anything
   --no-color       plain output
@@ -645,11 +673,12 @@ choose_action() {
     pick "What would you like to do?" "$def" \
       "Install / upgrade GlassDock|also migrates ModernDock" \
       "Install / upgrade GlassIcon Studio|icon themes and launcher icons" \
+      "Install X11 dock backend|for i3 and other X11 window managers" \
       "Check status|dependencies, install and checkout state" \
       "Uninstall GlassDock / ModernDock" \
       "Uninstall GlassIcon Studio" \
       "Exit|change nothing"
-    case "$PICK" in 0) ACTION=install;; 1) ACTION=glassicon;; 2) ACTION=status;; 3) ACTION=uninstall;; 4) ACTION=uninstall-glassicon;; *) ACTION=quit;; esac
+    case "$PICK" in 0) ACTION=install;; 1) ACTION=glassicon;; 2) ACTION=x11;; 3) ACTION=status;; 4) ACTION=uninstall;; 5) ACTION=uninstall-glassicon;; *) ACTION=quit;; esac
   else
     [ -n "$ACTION" ] || die "No interactive terminal was found. Run this from a terminal, or pass --action install|glassicon|uninstall|uninstall-glassicon|status."
     warn "No terminal attached; using action '$ACTION'."
@@ -659,13 +688,14 @@ choose_action() {
 main() {
   parse_args "$@"
   [ "$(id -u)" -ne 0 ] || die "Run as your normal user, not root."
-  case "$ACTION" in ""|install|glassicon|uninstall|uninstall-glassicon|status|quit) ;; *) die "Unknown action '$ACTION'.";; esac
+  case "$ACTION" in ""|install|glassicon|x11|uninstall|uninstall-glassicon|status|quit) ;; *) die "Unknown action '$ACTION'.";; esac
   log "start action='${ACTION:-menu}' dest=$DEST yes=$YES dry=$DRY tty=$HAVE_TTY android_termux=$IS_TERMUX"
   show_status
   [ -n "$ACTION" ] || choose_action
   case "$ACTION" in
     install) install_dock;;
     glassicon) install_glassicon;;
+    x11) install_x11_dock;;
     uninstall) uninstall_dock;;
     uninstall-glassicon) uninstall_glassicon;;
     status) preflight; printf '\n' >&2;;
