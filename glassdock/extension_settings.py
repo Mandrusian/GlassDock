@@ -253,12 +253,70 @@ class IconsPage(BasePage):
             entry.set_text(dlg.get_filename())
 
 
+PLUGIN_AI_PROMPT = """You are helping me create a GlassDock Python plugin for my own desktop theme.
+
+PLUGIN NAME: [short_module_name_without_spaces]
+DISPLAY NAME: [name shown in the dock]
+VISUAL STYLE / THEME: [colors, shape, typography, glow, glass, animation]
+WHAT IT SHOULD SHOW: [clock, system stats, usage, weather, custom status, etc.]
+DATA IT NEEDS: [only the values needed; use GlassDock stats where possible]
+CLICK BEHAVIOUR: [what left/middle click should do]
+CONFIGURATION OPTIONS: [colors, units, refresh interval, labels, etc.]
+PERMISSIONS NEEDED: [none, network, or run_commands; justify each permission]
+SIZE / LAYOUT: [compact dock tile details]
+
+Write one complete, runnable .py plugin module using the public API in
+`glassdock.plugin_api`: define exactly one PluginBase subclass, set NAME,
+TICK, PERMISSIONS, TRANSPARENT and CONFIG as appropriate, and implement
+on_load(), on_tick(), render(cr, w, h), on_click(button), and tooltip().
+Use only `self.ctx.stats`, `self.ctx.colors`, `self.ctx.cfg()`, and documented
+PluginContext methods. Draw with the supplied Cairo context; do not import GTK,
+change GlassDock files, access the network, or run commands unless I explicitly
+requested and justified the matching permission. Validate missing data and
+handle errors gracefully. Keep refresh work cheap; cache slow work between ticks.
+Return the full source code, filename, install instructions, and a short explanation
+of any permissions. Do not claim this is sandboxed: approved plugins run as my user.
+"""
+
+
 class PluginsPage(BasePage):
     def __init__(self, data=None):
-        super().__init__("Plugins", "Only modules you explicitly add from Launchers are loaded. Enabled plugin code runs with your account permissions.", data=data)
+        super().__init__("Plugins", "Create, configure and manage dock plugins. Only modules you explicitly enable are loaded; enabled plugin code runs with your account permissions.", data=data)
         self.fill()
 
+    def show_ai_prompt(self, *_):
+        dialog = Gtk.Dialog(title="AI plugin prompt template", transient_for=self.get_toplevel(), modal=True)
+        dialog.set_default_size(760, 620)
+        dialog.add_button("Close", Gtk.ResponseType.CLOSE)
+        dialog.add_button("Copy prompt", Gtk.ResponseType.APPLY)
+        area = dialog.get_content_area()
+        area.set_spacing(10)
+        area.set_margin_top(12); area.set_margin_bottom(12)
+        area.set_margin_start(12); area.set_margin_end(12)
+        area.pack_start(S.label("Fill in the bracketed fields, copy this prompt, and paste it into your AI assistant. Review generated code before enabling it.", "md-page-sub", wrap=True), False, False, 0)
+        view = Gtk.TextView()
+        view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        view.get_buffer().set_text(PLUGIN_AI_PROMPT)
+        view.set_monospace(True)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scroll.add(view)
+        area.pack_start(scroll, True, True, 0)
+        dialog.show_all()
+        response = dialog.run()
+        if response == Gtk.ResponseType.APPLY:
+            clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+            clipboard.set_text(view.get_buffer().get_text(view.get_buffer().get_start_iter(), view.get_buffer().get_end_iter(), True), -1)
+            clipboard.store()
+            S.message(self.get_toplevel(), "Copied", "AI plugin prompt copied to the clipboard.")
+        dialog.destroy()
+
     def fill(self):
+        actions = Gtk.Box(spacing=8)
+        prompt = Gtk.Button(label="Copy AI plugin prompt…")
+        prompt.connect("clicked", self.show_ai_prompt)
+        actions.pack_start(prompt, False, False, 0)
+        self.body.pack_start(self.card("Create your own plugin", actions), False, False, 0)
         from .dock_extensions import plugin_search_dirs
         enabled = [name for name, conf in self.data["plugins"].items()
                    if isinstance(conf, dict) and conf.get("enabled") is True]
