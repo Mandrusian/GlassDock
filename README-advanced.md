@@ -20,9 +20,7 @@ GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without re
 - **Fluid interactions** — hover magnification, smooth animations, launch bounce, app-name labels, and drag-to-reorder launchers.
 - **Wayland-native placement** — layer-shell anchoring, edge and alignment controls, margins, exclusive-zone handling, and per-monitor settings.
 - **Flexible behavior** — auto-hide, hide on fullscreen, optional overlay stacking, and login autostart controls.
-- **Built-in widgets** — add a live digital clock, calendar popup, playerctl music controls, and folder menus from Settings → Launchers → Add other.
-- **Badges and plugins** — configure per-item badges and load explicitly allowlisted user Python plugins with an in-memory usage API.
-- **Graphical settings** — adjust colors, gradients, opacity, borders, shadows, radius, sizing, animations, indicators, themes, launchers, widgets/extensions, and monitor overrides with a live preview.
+- **Graphical settings** — adjust colors, gradients, opacity, borders, shadows, radius, sizing, animations, indicators, themes, launchers, and monitor overrides with a live preview.
 - **Multiple looks** — Smoky Glass, Dark, Light, macOS-inspired, Liquid Glass-inspired, Purple/Pink, and Custom themes.
 
 ## Screenshots
@@ -155,9 +153,9 @@ Settings are stored in `~/.config/glassdock/config.json`. The configuration is v
 
 All built-in items are integrated into the normal dock model and can be added in **Settings → Launchers → Add other**. Clock and calendar use native Cairo-drawn icons. Clock format and seconds, calendar week start, music refresh, folder hidden-file visibility, badge limits, and plugin policy are available in **Settings → Widgets & Extensions**.
 
-Music controls call `playerctl` directly without a shell. Install `playerctl` and use an MPRIS-compatible player; if no player is available, controls report failure rather than pretending the action succeeded.
+Music controls call `playerctl` directly without a shell. Install `playerctl` and use an MPRIS-compatible player; if no player is available, controls report failure rather than pretending the action succeeded. Media commands run outside the GTK event loop.
 
-Folder items store their directory in the main config. Clicking the item opens a GTK menu of child files/directories; each selected child opens through `xdg-open`. The folder menu filters hidden files by default and is capped by the configured item limit. Global hotkeys must be registered by the Wayland compositor, for example:
+Folder items store their directory in the main config. Clicking the item opens a small GTK folder fan; selecting a child opens it through `xdg-open`. Hidden files are filtered by default. The fan previews up to six entries; the context menu can list up to the configured popup limit. Global hotkeys remain compositor-managed, for example:
 
 ```ini
 bindsym $mod+Ctrl+d exec glassdock-ctl toggle
@@ -175,14 +173,14 @@ The first command sets the badge to five (subject to the configured maximum); th
 
 ### User plugins
 
-The default plugin directory is `~/.config/glassdock/plugins/`. Copy reviewed examples into it:
+The default plugin directory is `~/.config/glassdock/plugins/`. Copy the reviewed examples into it:
 
 ```bash
 mkdir -p ~/.config/glassdock/plugins
 cp examples/plugins/*.py ~/.config/glassdock/plugins/
 ```
 
-Then open **Settings → Widgets & Extensions**, enable trusted plugins, and add the module names (without `.py`) to the comma-separated allowlist, for example `clock,usage`. Open **Settings → Launchers → Add other → Plugin widget…** to add an allowlisted plugin. Plugin render output is restricted to a JSON-compatible object with string label/icon fields; supported click actions are `toast`, `open_url`, and `open_path`. The plugin API is intentionally small and **is not a security sandbox**: plugins execute as the current user. Only allowlist code you have reviewed. The usage example counts activation events in memory and resets on restart.
+Then open **Settings → Launchers → Add other → Plugin widget…** and explicitly approve a module. The module names also appear in **Settings → Widgets & Extensions** in the comma-separated allowlist. You can use that page to enable/disable trusted plugins or configure a custom plugin directory. Plugin render output must be JSON-compatible and use string label/icon fields; supported click actions are `toast`, `open_url`, and `open_path`. Plugin code has the current user's permissions and is **not a security sandbox**, so only approve files you have reviewed. The usage example counts activation events in memory and resets on restart.
 
 ## Transparency and blur
 

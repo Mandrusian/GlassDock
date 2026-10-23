@@ -1,8 +1,9 @@
 """Example GlassDock plugin: in-memory dock item activation count.
 
-The count resets when GlassDock restarts. It is not a system-wide usage
-tracker; it only measures launches/clicks recorded by this dock process.
+Counts are kept only in memory and reset when GlassDock restarts.
 """
+
+
 class UsagePlugin:
     def on_load(self, context):
         self.stats = context["stats"]
@@ -14,7 +15,7 @@ class UsagePlugin:
     def render(self, context=None):
         usage = self.stats.snapshot()["usage"]
         total = sum(usage.values())
-        return {"label": f"{total} launches", "icon": "utilities-system-monitor"}
+        return {"label": "%d launches" % total, "icon": "utilities-system-monitor"}
 
     def on_tick(self, now):
         return None

@@ -11,8 +11,8 @@ import shlex
 import shutil
 import signal
 import subprocess
-import threading
 import sys
+import threading
 import time
 
 import gi
@@ -101,9 +101,8 @@ def draw_builtin(cr, kind, x, y, s, pct=None):
         cr.fill()
 
 
-
 def draw_extension_icon(cr, kind, x, y, s, pct=None):
-    """Draw dependency-free glyphs for the built-in widgets and folders."""
+    """Draw small native glyphs for built-in extension items."""
     top, bottom = (0.40, 0.50, 0.68), (0.20, 0.27, 0.40)
     if kind == "calendar":
         top, bottom = (0.42, 0.52, 0.66), (0.19, 0.25, 0.37)
@@ -117,14 +116,14 @@ def draw_extension_icon(cr, kind, x, y, s, pct=None):
     cr.set_line_join(cairo.LINE_JOIN_ROUND)
     cr.set_source_rgba(1, 1, 1, 0.94)
     if kind == "clock":
-        cx, cy, r = x + s / 2, y + s / 2, s * 0.30
+        cx, cy, radius = x + s / 2, y + s / 2, s * 0.30
         cr.set_line_width(max(1.5, s * 0.045))
-        cr.arc(cx, cy, r, 0, 2 * math.pi)
+        cr.arc(cx, cy, radius, 0, 2 * math.pi)
         cr.stroke()
         cr.move_to(cx, cy)
-        cr.line_to(cx, cy - r * 0.64)
+        cr.line_to(cx, cy - radius * 0.64)
         cr.move_to(cx, cy)
-        cr.line_to(cx + r * 0.52, cy + r * 0.12)
+        cr.line_to(cx + radius * 0.52, cy + radius * 0.12)
         cr.stroke()
     elif kind == "calendar":
         bx, by, bw, bh = x + s * 0.21, y + s * 0.22, s * 0.58, s * 0.56
@@ -136,9 +135,8 @@ def draw_extension_icon(cr, kind, x, y, s, pct=None):
         cr.stroke()
         for row in range(2):
             for col in range(3):
-                cx = bx + bw * (0.23 + col * 0.27)
-                cy = by + bh * (0.42 + row * 0.25)
-                cr.rectangle(cx, cy, s * 0.045, s * 0.045)
+                cr.rectangle(bx + bw * (0.23 + col * 0.27), by + bh * (0.42 + row * 0.25),
+                             s * 0.045, s * 0.045)
                 cr.fill()
         for cx in (bx + bw * 0.28, bx + bw * 0.72):
             cr.move_to(cx, by - s * 0.035)
@@ -223,7 +221,7 @@ class IconCache:
 
     def get_item(self, it, px, scale, window):
         sig = tuple(sorted({(w.app_id or "", w.wm_class or "") for w in it.windows}))
-        key = ("item", it.key, it.icon, sig, px, scale)
+        key = ("item", it.key, it.icon, it.name, getattr(it.entry, "id", None), sig, px, scale)
 
         def load():
             for name in candidate_names(it.icon, it.entry, it.windows, it.name):
@@ -329,6 +327,7 @@ class DockWindow(Gtk.Window):
         self.tick_id = None
         self.last_tick = None
         self.region_sig = None
+        self.folder_popover = None
 
         self.set_title("GlassDock")
         self.set_decorated(False)
@@ -587,7 +586,7 @@ class DockWindow(Gtk.Window):
             else:
                 busy = True
         for key in list(self.bounce):
-            if now - self.bounce[key] > 4.0 and self.bounce[key] > 0:
+            if now - self.bounce[key] > 4.0:
                 del self.bounce[key]
         if self.bounce:
             busy = True
@@ -600,7 +599,9 @@ class DockWindow(Gtk.Window):
         return True
 
     def start_bounce(self, key):
-        self.bounce[key] = -1.0  # real start time is stamped on the next draw
+        # Stamp immediately: if the dock is hidden, draw callbacks may short-circuit
+        # before bounce_offset() runs. A negative sentinel could otherwise animate forever.
+        self.bounce[key] = GLib.get_monotonic_time() / 1e6
         self.ensure_tick()
 
     def bounce_offset(self, key, now):
@@ -720,20 +721,20 @@ class DockWindow(Gtk.Window):
                 badge = E.badge_text(it.badge_count, g("extensions.badge_max_count"))
                 if badge:
                     layout_badge = PangoCairo.create_layout(cr)
-                    layout_badge.set_font_description(Pango.FontDescription(
-                        "Sans Bold %d" % max(7, int(s * 0.17))))
+                    layout_badge.set_font_description(Pango.FontDescription("Sans Bold %d" % max(7, int(s * 0.17))))
                     layout_badge.set_text(badge, -1)
                     tw, th = layout_badge.get_pixel_size()
-                    bw, bh = max(s * 0.28, tw + s * 0.14), max(s * 0.25, th + s * 0.08)
+                    badge_w = max(s * 0.28, tw + s * 0.14)
+                    badge_h = max(s * 0.25, th + s * 0.08)
                     bx, by = x + s * 0.58, y + s * 0.02
-                    rrect(cr, bx, by, bw, bh, bh / 2.0)
+                    rrect(cr, bx, by, badge_w, badge_h, badge_h / 2.0)
                     cr.set_source_rgba(0.92, 0.20, 0.27, 1.0)
                     cr.fill()
                     cr.set_source_rgba(1, 1, 1, 1)
-                    cr.move_to(bx + (bw - tw) / 2.0, by + (bh - th) / 2.0)
+                    cr.move_to(bx + (badge_w - tw) / 2.0, by + (badge_h - th) / 2.0)
                     PangoCairo.show_layout(cr, layout_badge)
             if it.key == self.hover_key:
-                hover_text = it.extension_text if it.extension_text else it.name
+                hover_text = it.extension_text or it.name
                 hover_item = (it, m + s / 2.0, c + s, hover_text)
 
             # running indicators
@@ -966,6 +967,12 @@ class DockWindow(Gtk.Window):
             add("Previous track", lambda: self.app.music_action("previous"))
             add("Stop", lambda: self.app.music_action("stop"))
             sep()
+        elif item is not None and item.kind == "widget" and item.extension in ("clock", "calendar"):
+            add("Open calendar", lambda: self.show_calendar_menu(item, ev))
+            sep()
+        elif item is not None and item.kind == "plugin":
+            add("Run plugin", lambda: self.app.activate(item, False, self))
+            sep()
         elif item is not None and item.kind in ("app", "launcher"):
             for win in item.windows[:8]:
                 title = (win.title or item.name)
@@ -993,6 +1000,8 @@ class DockWindow(Gtk.Window):
         if item is not None and item.cfg_index >= 0 and item.kind != "separator":
             sep()
             add("Set badge count…", lambda: self.app.edit_badge(item))
+            if item.kind in ("folder", "widget", "plugin"):
+                add("Remove from Dock", lambda: self.app.unpin(item))
         add("Dock Settings…", self.app.open_settings)
         add("Quit Dock", Gtk.main_quit)
         menu.show_all()
@@ -1016,12 +1025,7 @@ class DockWindow(Gtk.Window):
         except Exception:  # fall back to plain pointer popup
             menu.popup_at_pointer(ev)
 
-    def _menu_closed(self, menu):
-        self.menu_open = False
-        self.reevaluate()
-        GLib.timeout_add(1500, lambda: (menu.destroy(), False)[1])
-
-    def _popup_at_item(self, menu, item, ev):
+    def _popup_at_item(self, menu, item, ev=None):
         menu.show_all()
         self.menu_open = True
         menu.connect("deactivate", self._menu_closed)
@@ -1037,12 +1041,10 @@ class DockWindow(Gtk.Window):
             x, y, w, h = M.place(self.geo.edge, W, H, m, cc, ss, ss)
             rect = Gdk.Rectangle()
             rect.x, rect.y, rect.width, rect.height = int(x), int(y), int(w), int(h)
-            anchors = {
-                "bottom": (Gdk.Gravity.NORTH, Gdk.Gravity.SOUTH),
-                "top": (Gdk.Gravity.SOUTH, Gdk.Gravity.NORTH),
-                "left": (Gdk.Gravity.EAST, Gdk.Gravity.WEST),
-                "right": (Gdk.Gravity.WEST, Gdk.Gravity.EAST),
-            }
+            anchors = {"bottom": (Gdk.Gravity.NORTH, Gdk.Gravity.SOUTH),
+                       "top": (Gdk.Gravity.SOUTH, Gdk.Gravity.NORTH),
+                       "left": (Gdk.Gravity.EAST, Gdk.Gravity.WEST),
+                       "right": (Gdk.Gravity.WEST, Gdk.Gravity.EAST)}
             menu.popup_at_rect(self.area.get_window(), rect, anchors[self.geo.edge][0],
                                anchors[self.geo.edge][1], ev)
         except Exception:
@@ -1058,9 +1060,8 @@ class DockWindow(Gtk.Window):
             return
         limit = self.g("extensions.folder_popup_limit")
         for child in children[:limit]:
-            label = child["name"] + ("/" if child["is_dir"] else "")
-            entry = Gtk.MenuItem(label=label)
-            entry.connect("activate", lambda *_args, p=child["path"]: spawn(["xdg-open", p]))
+            entry = Gtk.MenuItem(label=child["name"] + ("/" if child["is_dir"] else ""))
+            entry.connect("activate", lambda *_args, path=child["path"]: spawn(["xdg-open", path]))
             menu.append(entry)
         if len(children) > limit:
             more = Gtk.MenuItem(label="Open folder… (%d more)" % (len(children) - limit))
@@ -1068,22 +1069,16 @@ class DockWindow(Gtk.Window):
             menu.append(more)
 
     def show_folder_menu(self, item, ev=None):
-        """Open a native, animated-style folder fan instead of a standalone utility."""
         try:
             children = E.folder_children(item.path, self.g("extensions.folder_show_hidden"))
         except (OSError, ValueError) as exc:
             toast("Folder unavailable: %s" % exc)
             return
-
         edge = self.geo.edge
         width, height = (320, 250) if M.is_horizontal(edge) else (260, 320)
         popover = Gtk.Popover.new(self.area)
-        popover.set_position({
-            "bottom": Gtk.PositionType.TOP,
-            "top": Gtk.PositionType.BOTTOM,
-            "left": Gtk.PositionType.RIGHT,
-            "right": Gtk.PositionType.LEFT,
-        }[edge])
+        popover.set_position({"bottom": Gtk.PositionType.TOP, "top": Gtk.PositionType.BOTTOM,
+                              "left": Gtk.PositionType.RIGHT, "right": Gtk.PositionType.LEFT}[edge])
         fixed = Gtk.Fixed()
         fixed.set_size_request(width, height)
         popover.add(fixed)
@@ -1092,22 +1087,16 @@ class DockWindow(Gtk.Window):
         title.set_max_width_chars(22)
         title.set_size_request(width - 32, 24)
         fixed.put(title, 16, 4)
-
-        limit = min(self.g("extensions.folder_popup_limit"), 6)
-        visible = children[:limit]
+        visible = children[:min(self.g("extensions.folder_popup_limit"), 6)]
         radius = self.g("extensions.folder_fan_radius")
         arc = self.g("extensions.folder_fan_angle")
-        origins = {
-            "bottom": (width / 2, height - 58, -145),
-            "top": (width / 2, 48, 35),
-            "left": (46, height / 2, -55),
-            "right": (width - 46, height / 2, 125),
-        }
+        origins = {"bottom": (width / 2, height - 58, -145),
+                   "top": (width / 2, 48, 35), "left": (46, height / 2, -55),
+                   "right": (width - 46, height / 2, 125)}
         ox, oy, start = origins[edge]
-        positions = E.fan_positions(
-            len(visible), (ox, oy), radius=radius, angle_degrees=arc, start_degrees=start
-        )
-        for child, point in zip(visible, positions):
+        points = E.fan_positions(len(visible), (ox, oy), radius=radius,
+                                 angle_degrees=arc, start_degrees=start)
+        for child, point in zip(visible, points):
             button = Gtk.Button()
             button.set_relief(Gtk.ReliefStyle.NONE)
             button.set_size_request(38, 38)
@@ -1118,27 +1107,19 @@ class DockWindow(Gtk.Window):
             button.set_tooltip_text(child["name"])
             x = int(max(3, min(width - 41, point["x"] - 19)))
             y = int(max(32, min(height - 47, point["y"] - 19)))
-            button.connect(
-                "clicked",
-                lambda _button, p=child["path"], pop=popover: (
-                    pop.popdown(), spawn(["xdg-open", p])
-                ),
-            )
+            button.connect("clicked", lambda _button, path=child["path"], pop=popover:
+                           (pop.popdown(), spawn(["xdg-open", path])))
             fixed.put(button, x, y)
-
         open_button = Gtk.Button(label="Open folder")
         open_button.set_size_request(132, 30)
-        open_button.connect(
-            "clicked",
-            lambda _button, p=item.path, pop=popover: (pop.popdown(), spawn(["xdg-open", p])),
-        )
+        open_button.connect("clicked", lambda _button, path=item.path, pop=popover:
+                            (pop.popdown(), spawn(["xdg-open", path])))
         fixed.put(open_button, (width - 132) // 2, height - 38)
         if len(children) > len(visible):
             more = Gtk.Label(label="%d more items" % (len(children) - len(visible)))
             more.set_sensitive(False)
             more.set_size_request(width - 20, 20)
             fixed.put(more, 10, height - 66)
-
         popover.set_modal(False)
         popover.set_relative_to(self.area)
         if ev is not None:
@@ -1163,6 +1144,7 @@ class DockWindow(Gtk.Window):
         self.menu_open = False
         self.reevaluate()
         self.queue_draw()
+
     def show_calendar_menu(self, item, ev=None):
         first_day = 6 if self.g("extensions.calendar_first_weekday") == "sunday" else 0
         month = E.calendar_month(first_weekday=first_day)
@@ -1179,6 +1161,35 @@ class DockWindow(Gtk.Window):
             row.set_sensitive(False)
             menu.append(row)
         self._popup_at_item(menu, item, ev)
+
+    def _menu_closed(self, menu):
+        self.menu_open = False
+        # Pointer-leave events are ignored while the popup is open. Re-query the
+        # pointer now so an old inside-state cannot keep an auto-hidden dock visible.
+        self.pointer_inside = False
+        self.pointer = None
+        self.hover_key = None
+        try:
+            display = Gdk.Display.get_default()
+            seat = display.get_default_seat() if display is not None else None
+            device = seat.get_pointer() if seat is not None else None
+            window = self.area.get_window()
+            if device is not None and window is not None:
+                result = window.get_device_position(device)
+                if result and result[0] is not None:
+                    _child, x, y, _state = result
+                    width = self.area.get_allocated_width()
+                    height = self.area.get_allocated_height()
+                    if 0 <= x < width and 0 <= y < height:
+                        self.pointer_inside = True
+                        self.pointer = M.unplace(self.geo.edge, width, height, x, y)
+        except (AttributeError, TypeError, GLib.Error):
+            # Falling back to a cleared state is safer than retaining stale input.
+            self.pointer_inside = False
+            self.pointer = None
+        self.after_pointer()
+        self.reevaluate()
+        GLib.timeout_add(1500, lambda: (menu.destroy(), False)[1])
 
 
 # ------------------------------------------------------------------- application
@@ -1202,6 +1213,7 @@ class DockApp:
         self.icons = None
         self.control = None
         self.listener = None
+        self.monitor = None
         self.last_self_write = 0.0
         self.music_controller = None
         self.plugin_manager = None
@@ -1229,6 +1241,9 @@ class DockApp:
             self.control.bind()
         except control.AlreadyRunning:
             log("GlassDock is already running.")
+            return 1
+        except OSError as exc:
+            log("Cannot create the control socket: %s" % exc)
             return 1
         self.control.start()
 
@@ -1269,13 +1284,35 @@ class DockApp:
         return False
 
     def shutdown(self):
+        if self.extension_tick_id is not None:
+            try:
+                GLib.source_remove(self.extension_tick_id)
+            except GLib.Error:
+                pass
+            self.extension_tick_id = None
+        for attr in ("refresh_id", "reload_id"):
+            source_id = getattr(self, attr, None)
+            if source_id is not None:
+                try:
+                    GLib.source_remove(source_id)
+                except GLib.Error:
+                    pass
+                setattr(self, attr, None)
         if self.listener:
             self.listener.stop()
+            self.listener = None
+        if self.monitor is not None:
+            try:
+                self.monitor.cancel()
+            except GLib.Error:
+                pass
+            self.monitor = None
+        if self.ipc is not None:
+            self.ipc.close()
+            self.ipc = None
         if self.control:
             self.control.stop()
-        if self.extension_tick_id is not None:
-            GLib.source_remove(self.extension_tick_id)
-            self.extension_tick_id = None
+            self.control = None
 
     # --------------------------------------------------------------- sway state
     def on_sway_event(self, name, payload):
@@ -1379,9 +1416,13 @@ class DockApp:
 
     def watch_config(self):
         d = C.config_dir()
-        os.makedirs(d, exist_ok=True)
-        self.monitor = Gio.File.new_for_path(d).monitor_directory(Gio.FileMonitorFlags.NONE, None)
-        self.monitor.connect("changed", self.on_config_file_changed)
+        try:
+            os.makedirs(d, exist_ok=True)
+            self.monitor = Gio.File.new_for_path(d).monitor_directory(Gio.FileMonitorFlags.NONE, None)
+            self.monitor.connect("changed", self.on_config_file_changed)
+        except (GLib.Error, OSError) as exc:
+            self.monitor = None
+            log("Config file watching unavailable: %s" % exc)
 
     def on_config_file_changed(self, mon, f, other, event):
         if not f.get_basename() == "config.json":
@@ -1397,6 +1438,8 @@ class DockApp:
 
     # ----------------------------------------------------------------- control
     def handle_control(self, msg):
+        if not isinstance(msg, dict):
+            return {"ok": False, "error": "request must be a JSON object"}
         cmd = msg.get("cmd")
         if cmd == "ping":
             return {"ok": True, "version": __version__}
@@ -1417,7 +1460,7 @@ class DockApp:
             try:
                 index, count = int(msg.get("index")), int(msg.get("count"))
             except (TypeError, ValueError):
-                return {"ok": False, "error": "badge needs numeric index and count"}
+                return {"ok": False, "error": "badge needs a numeric index and count"}
             if not 1 <= index <= len((self.cfg or {}).get("items", [])) or count < 0:
                 return {"ok": False, "error": "badge index is 1-based in Settings > Launchers and count must be non-negative"}
             GLib.idle_add(self.set_badge_config, index - 1, count)
@@ -1455,9 +1498,12 @@ class DockApp:
     # ----------------------------------------------------------------- actions
     def terminal_prefix(self):
         try:
-            return shlex.split(getter(self.cfg)("behavior.terminal_command")) + ["-e"]
-        except ValueError:
-            return ["foot", "-e"]
+            command = shlex.split(getter(self.cfg)("behavior.terminal_command"))
+            if command:
+                return command + ["-e"]
+        except (TypeError, ValueError):
+            pass
+        return ["foot", "-e"]
 
     def activate(self, item, new_instance=False, dock=None):
         if item.kind == "separator":
@@ -1475,27 +1521,27 @@ class DockApp:
                 dock.show_calendar_menu(item)
             return
         if item.kind == "plugin":
-            result = self.plugin_manager.click(item.extension, {"key": item.key, "name": item.name}) if self.plugin_manager else None
-            if isinstance(result, dict) and result.get("action") == "open_url":
+            manager = self.plugin_manager
+            result = manager.click(item.extension, {"key": item.key, "name": item.name}) if manager else None
+            if not isinstance(result, dict):
+                return
+            action = result.get("action")
+            if action == "open_url":
                 url = result.get("url")
-                if isinstance(url, str) and url.startswith(("https://", "http://")):
-                    Gio.AppInfo.launch_default_for_uri(url, None)
-                    return
-            if isinstance(result, dict) and result.get("action") == "open_path":
+                if isinstance(url, str) and url.startswith(("https://", "http://")) and "\x00" not in url:
+                    try:
+                        Gio.AppInfo.launch_default_for_uri(url, None)
+                    except GLib.Error as exc:
+                        toast("Could not open plugin URL: %s" % exc)
+            elif action == "open_path":
                 path = result.get("path")
                 if isinstance(path, str) and path and "\x00" not in path:
                     spawn(["xdg-open", os.path.expanduser(path)])
-                    return
-            if isinstance(result, dict) and result.get("action") == "toast":
+            elif action == "toast":
                 toast(str(result.get("message", ""))[:200])
-            elif result is not None:
-                toast(str(result)[:200])
             return
         if self.plugin_manager is not None and item.kind in ("app", "launcher"):
-            try:
-                self.plugin_manager.stats.record_open(item.key)
-            except ValueError:
-                pass
+            self.plugin_manager.stats.record_open(item.key)
         if item.kind == "special":
             if item.special == "apps":
                 try:
@@ -1554,18 +1600,15 @@ class DockApp:
             argv = self.terminal_prefix() + argv
         spawn(argv)
 
-    def save_cfg(self):
-        self.last_self_write = time.monotonic()
-        C.save_config(self.cfg)
-        self.rebuild()
-
     def configure_extensions(self):
         g = getter(self.cfg)
-        playerctl = g("extensions.music_playerctl").strip() or "playerctl"
-        self.music_controller = E.MusicController(playerctl)
-        directory = g("extensions.plugin_directory").strip()
-        if not directory:
-            directory = os.path.join(C.config_dir(), "plugins")
+        executable = g("extensions.music_playerctl").strip() or "playerctl"
+        try:
+            self.music_controller = E.MusicController(executable)
+        except (TypeError, ValueError) as exc:
+            log("Music controller unavailable: %s" % exc)
+            self.music_controller = None
+        directory = g("extensions.plugin_directory").strip() or os.path.join(C.config_dir(), "plugins")
         allowlist = [part.strip() for part in g("extensions.plugin_allowlist").split(",") if part.strip()]
         if g("extensions.plugins_enabled"):
             try:
@@ -1573,20 +1616,23 @@ class DockApp:
                 self.plugin_manager.discover()
                 for name, error in self.plugin_manager.errors.items():
                     log("plugin %s not loaded: %s" % (name, error.splitlines()[-1]))
-            except (OSError, ValueError) as exc:
-                log("plugin manager unavailable: %s" % exc)
+            except (OSError, TypeError, ValueError) as exc:
+                log("Plugin manager unavailable: %s" % exc)
                 self.plugin_manager = None
         else:
             self.plugin_manager = None
 
     def refresh_extensions(self):
-        """Update extension labels without blocking GTK on external media commands."""
+        """Refresh labels and schedule potentially slow playerctl calls away from GTK."""
         if not self.cfg:
             return True
         g = getter(self.cfg)
         now = time.monotonic()
-        clock = E.clock_text(fmt=g("extensions.clock_format"),
-                             show_seconds=g("extensions.clock_show_seconds"))
+        try:
+            clock = E.clock_text(fmt=g("extensions.clock_format"),
+                                 show_seconds=g("extensions.clock_show_seconds"))
+        except (ValueError, TypeError):
+            clock = time.strftime("%H:%M")
         controller = self.music_controller
         if controller is not None:
             interval = g("extensions.music_refresh_seconds")
@@ -1599,7 +1645,7 @@ class DockApp:
                     try:
                         controller.refresh(now=time.monotonic(), force=True, interval=interval)
                     except Exception as exc:
-                        log("music metadata refresh failed: %s" % exc)
+                        log("Music metadata refresh failed: %s" % exc)
                     GLib.idle_add(self._music_refresh_completed, controller)
 
                 threading.Thread(target=refresh_worker, daemon=True,
@@ -1608,6 +1654,7 @@ class DockApp:
         else:
             music = {"title": "Nothing playing", "status": "Stopped"}
 
+        changed = False
         for item in self.items:
             old = (item.name, item.icon, item.extension_text)
             if item.kind == "widget":
@@ -1616,18 +1663,19 @@ class DockApp:
                 elif item.extension == "calendar":
                     item.extension_text = "Open calendar"
                 elif item.extension == "music":
-                    item.extension_text = (
-                        "Music stopped" if music.get("title") == "Nothing playing"
-                        else music.get("title", "Music")
-                    )
+                    title = music.get("title") or "Nothing playing"
+                    item.extension_text = "Music stopped" if title == "Nothing playing" else title
                     if g("extensions.music_controls_on_hover"):
                         item.extension_text += " · Right-click for controls"
             elif item.kind == "plugin" and self.plugin_manager is not None:
                 rendered = self.plugin_manager.render(item.extension)
-                item.name, item.icon = rendered["label"] or item.extension, rendered["icon"]
+                item.name = rendered["label"] or item.extension
+                item.icon = rendered["icon"]
             if old != (item.name, item.icon, item.extension_text):
-                for dock in self.docks.values():
-                    dock.queue_draw()
+                changed = True
+        if changed:
+            for dock in self.docks.values():
+                dock.queue_draw()
         if self.plugin_manager is not None:
             self.plugin_manager.tick(now=time.time())
         return True
@@ -1639,7 +1687,6 @@ class DockApp:
         return False
 
     def music_action(self, action):
-        """Dispatch playerctl actions off the GTK loop so an absent player cannot freeze the dock."""
         controller = self.music_controller
         if controller is None:
             toast("Music control failed. Check playerctl and your media player.")
@@ -1652,7 +1699,7 @@ class DockApp:
             try:
                 ok = controller.command(action)
             except Exception as exc:
-                log("music action failed: %s" % exc)
+                log("Music action failed: %s" % exc)
                 ok = False
             GLib.idle_add(self._music_action_completed, controller, ok)
 
@@ -1700,6 +1747,11 @@ class DockApp:
         if response == Gtk.ResponseType.OK:
             self.cfg["items"][idx]["badge_count"] = min(maximum, count)
             self.save_cfg()
+
+    def save_cfg(self):
+        self.last_self_write = time.monotonic()
+        C.save_config(self.cfg)
+        self.rebuild()
 
     def pin(self, item):
         if item.entry is not None:

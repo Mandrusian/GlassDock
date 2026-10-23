@@ -303,19 +303,16 @@ def default_items(entries=None):
 
 
 def validate_items(items):
+    """Validate persisted dock items without discarding extension item fields."""
     out = []
-    seen_apps = set()
-    seen_widgets = set()
-    seen_folders = set()
-    seen_plugins = set()
+    seen_apps, seen_widgets, seen_folders, seen_plugins = set(), set(), set(), set()
     if not isinstance(items, list):
         return None
 
     def add(spec, raw):
-        if "badge_count" in raw:
-            count = raw.get("badge_count")
-            if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
-                spec["badge_count"] = min(count, 999999)
+        count = raw.get("badge_count") if isinstance(raw, dict) else None
+        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+            spec["badge_count"] = min(count, 999999)
         out.append(spec)
 
     for it in items:
@@ -327,48 +324,57 @@ def validate_items(items):
             if isinstance(aid, str) and aid and aid not in seen_apps:
                 seen_apps.add(aid)
                 app = {"type": "app", "id": aid}
-                for k, cap in (("name", 100), ("icon", 500)):
-                    v = it.get(k)
-                    if isinstance(v, str) and v.strip():
-                        app[k] = v.strip()[:cap]
+                for key, cap in (("name", 100), ("icon", 500)):
+                    value = it.get(key)
+                    if isinstance(value, str) and value.strip():
+                        app[key] = value.strip()[:cap]
                 add(app, it)
         elif t == "launcher":
-            name, ex = it.get("name"), it.get("exec")
-            if isinstance(name, str) and name.strip() and isinstance(ex, str) and ex.strip():
+            name, command = it.get("name"), it.get("exec")
+            if isinstance(name, str) and name.strip() and isinstance(command, str) and command.strip():
                 entry = {"type": "launcher", "name": name.strip()[:100],
-                         "exec": ex.strip()[:1000], "icon": str(it.get("icon", "") or "")[:500]}
+                         "exec": command.strip()[:1000], "icon": str(it.get("icon", "") or "")[:500]}
                 match = it.get("match")
                 if isinstance(match, str) and match.strip():
                     entry["match"] = match.strip()[:200]
                 add(entry, it)
-        elif t == "folder":
-            path = it.get("path")
-            if isinstance(path, str) and path.strip() and "\x00" not in path:
-                clean_path = os.path.abspath(os.path.expanduser(path.strip()))
-                if clean_path not in seen_folders:
-                    seen_folders.add(clean_path)
-                    name = it.get("name")
-                    icon = it.get("icon", "folder")
-                    folder = {"type": "folder", "path": clean_path,
-                              "name": (name.strip()[:100] if isinstance(name, str) and name.strip()
-                                       else os.path.basename(clean_path.rstrip(os.sep)) or clean_path),
-                              "icon": icon.strip()[:500] if isinstance(icon, str) and icon.strip() else "folder"}
-                    add(folder, it)
-        elif t == "widget":
-            kind = it.get("kind")
-            if kind in ("clock", "calendar", "music") and kind not in seen_widgets:
-                seen_widgets.add(kind)
-                add({"type": "widget", "kind": kind}, it)
-        elif t == "plugin":
-            name = it.get("name")
-            if isinstance(name, str) and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name) and name not in seen_plugins:
-                seen_plugins.add(name)
-                add({"type": "plugin", "name": name}, it)
         elif t == "separator":
-            add({"type": "separator"}, it)
+            out.append({"type": "separator"})
         elif t == "special":
             if it.get("kind") in SPECIAL_KINDS:
                 add({"type": "special", "kind": it["kind"]}, it)
+        elif t == "folder":
+            path = it.get("path")
+            if not isinstance(path, str) or not path.strip():
+                continue
+            path = os.path.abspath(os.path.expanduser(path.strip()))
+            if path in seen_folders:
+                continue
+            seen_folders.add(path)
+            name = it.get("name")
+            icon = it.get("icon")
+            spec = {"type": "folder", "path": path,
+                    "name": name.strip()[:100] if isinstance(name, str) and name.strip() else os.path.basename(path) or path,
+                    "icon": icon.strip()[:500] if isinstance(icon, str) else "folder"}
+            add(spec, it)
+        elif t == "widget":
+            kind = it.get("kind")
+            if kind not in ("clock", "calendar", "music") or kind in seen_widgets:
+                continue
+            seen_widgets.add(kind)
+            add({"type": "widget", "kind": kind}, it)
+        elif t == "plugin":
+            name = it.get("name")
+            if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name):
+                continue
+            if name in seen_plugins:
+                continue
+            seen_plugins.add(name)
+            spec = {"type": "plugin", "name": name}
+            icon = it.get("icon")
+            if isinstance(icon, str) and icon.strip():
+                spec["icon"] = icon.strip()[:500]
+            add(spec, it)
     return out
 
 
@@ -409,7 +415,8 @@ def validate(cfg, entries=None):
         except (ValueError, TypeError):
             pass
     theme = cfg.get("theme")
-    out["theme"] = theme if (theme in THEMES or theme == CUSTOM or _is_user_theme(theme)) else CUSTOM
+    is_user_theme = isinstance(theme, str) and re.fullmatch(r"user:[a-z0-9][a-z0-9-]{0,47}", theme)
+    out["theme"] = theme if (theme in THEMES or theme == CUSTOM or is_user_theme) else CUSTOM
     if "items" in cfg:
         items = validate_items(cfg["items"])
         if items is not None:
@@ -453,7 +460,7 @@ def migrate(cfg):
             set_path(cfg, "behavior.autohide", "always" if ah else "off")
         version = 2
     if version < 3:
-        # v2: widgets and extension settings are added by schema defaults.
+        # v2: built-in widgets and trusted user plugins use defaulted extension settings.
         version = 3
     cfg["version"] = version
     return cfg
@@ -476,13 +483,6 @@ def monitor_enabled(cfg, output_name):
 
 
 # ------------------------------------------------------------- themes
-
-_USER_THEME_RE = re.compile(r"^user:[a-z0-9][a-z0-9-]{0,47}$")
-
-
-def _is_user_theme(name):
-    return isinstance(name, str) and bool(_USER_THEME_RE.match(name))
-
 
 def apply_theme(cfg, name):
     """Copy a built-in theme's values into cfg and record the theme name."""

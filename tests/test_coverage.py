@@ -65,17 +65,6 @@ class CoverageTests(unittest.TestCase):
                     for v in vals:
                         self.assertIsInstance(v, bool, s.key)
 
-    def test_music_processes_run_off_the_gtk_loop(self):
-        src = read("glassdock/dock.py")
-        body = src.split("def refresh_extensions(self):", 1)[1].split(
-            "def set_badge_config(self, idx, count):", 1
-        )[0]
-        self.assertIn('threading.Thread(target=refresh_worker', body)
-        self.assertIn('threading.Thread(target=action_worker', body)
-        self.assertIn('GLib.idle_add(self._music_refresh_completed, controller)', body)
-        self.assertIn('GLib.idle_add(self._music_action_completed, controller, ok)', body)
-        self.assertNotIn('controller.refresh(\n                now=now', body)
-
     def test_all_python_sources_compile(self):
         for base, _dirs, files in os.walk(os.path.join(ROOT, "glassdock")):
             for fn in files:

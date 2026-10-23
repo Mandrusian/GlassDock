@@ -25,7 +25,7 @@ class DockItem:
     argv: list = None              # for custom launchers
     special: str = ""              # "apps" | "trash"
     extension: str = ""            # clock | calendar | music | plugin module name
-    path: str = ""                 # folder path
+    path: str = ""                 # configured folder path
     badge_count: int = 0
     extension_text: str = ""       # dynamic hover label
     pinned: bool = True
@@ -120,7 +120,8 @@ def build_items(cfg_items, entries, windows, show_unpinned=True):
             if entry is None:
                 continue  # not installed: keep in config, hide from dock
             items.append(DockItem(key="app:%s" % entry.id, kind="app", name=spec.get("name") or entry.name,
-                                  icon=spec.get("icon") or entry.icon, entry=entry, badge_count=spec.get("badge_count", 0), cfg_index=idx))
+                                  icon=spec.get("icon") or entry.icon, entry=entry,
+                                  badge_count=spec.get("badge_count", 0), cfg_index=idx))
             idents.append(entry_identifiers(entry))
         elif t == "launcher":
             try:
@@ -128,7 +129,8 @@ def build_items(cfg_items, entries, windows, show_unpinned=True):
             except ValueError:
                 argv = spec["exec"].split()
             items.append(DockItem(key="launcher:%d" % idx, kind="launcher", name=spec["name"],
-                                  icon=spec.get("icon", ""), argv=argv, badge_count=spec.get("badge_count", 0), cfg_index=idx))
+                                  icon=spec.get("icon", ""), argv=argv,
+                                  badge_count=spec.get("badge_count", 0), cfg_index=idx))
             idents.append(_launcher_identifiers(spec))
         elif t == "folder":
             path = spec.get("path", "")
@@ -145,11 +147,12 @@ def build_items(cfg_items, entries, windows, show_unpinned=True):
                 items.append(DockItem(key="widget:" + kind, kind="widget", name=names[kind],
                                       icon=icons[kind], extension=kind,
                                       badge_count=spec.get("badge_count", 0), cfg_index=idx))
-                idents.append(None)
+            idents.append(None)
         elif t == "plugin":
             name = spec.get("name", "")
             items.append(DockItem(key="plugin:" + name, kind="plugin", name=name,
-                                  extension=name, badge_count=spec.get("badge_count", 0), cfg_index=idx))
+                                  extension=name, icon=spec.get("icon", ""),
+                                  badge_count=spec.get("badge_count", 0), cfg_index=idx))
             idents.append(None)
 
     unclaimed = []

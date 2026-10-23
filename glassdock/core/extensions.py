@@ -1,9 +1,10 @@
-"""Runtime helpers for GlassDock's built-in widgets and trusted user plugins.
+"""Runtime helpers for GlassDock widgets, badges, folders, and trusted plugins.
 
-The helpers in this module are GTK-independent so the data handling remains
-unit-testable. Plugins are ordinary Python modules and are not sandboxed:
-only load code the user explicitly places on the allowlist.
+Plugin modules are regular Python code executed with the user's permissions.
+The allowlist is an opt-in safety check, not a sandbox.
 """
+from __future__ import annotations
+
 import calendar
 import datetime as _datetime
 import hashlib
@@ -14,10 +15,10 @@ import os
 import re
 import subprocess
 import sys
+import threading
 import time
 import traceback
 from pathlib import Path
-
 
 _MODIFIERS = {"Super", "Ctrl", "Alt", "Shift"}
 _KEYS = re.compile(r"(?:[A-Za-z0-9]|F(?:[1-9]|1[0-2])|Space|Escape|Return|Tab|Left|Right|Up|Down)\Z")
@@ -25,7 +26,7 @@ _PLUGIN_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}\Z")
 
 
 def parse_hotkey(binding):
-    """Validate a portable modifier+key description; registration is compositor-owned."""
+    """Validate a portable modifier+key string; registration belongs to the compositor."""
     if not isinstance(binding, str):
         raise ValueError("hotkey must be a string")
     parts = binding.strip().split("+")
@@ -40,6 +41,7 @@ def parse_hotkey(binding):
 
 
 def badge_text(count, maximum=99):
+    """Format a badge count; nonpositive values hide the badge."""
     if isinstance(count, bool) or not isinstance(count, int):
         raise ValueError("badge count must be an integer")
     if isinstance(maximum, bool) or not isinstance(maximum, int) or maximum < 1:
@@ -55,13 +57,13 @@ def clock_text(now=None, fmt="24h", show_seconds=False):
         raise TypeError("now must be a datetime")
     if fmt not in ("12h", "24h"):
         raise ValueError("fmt must be '12h' or '24h'")
+    if not isinstance(show_seconds, bool):
+        raise ValueError("show_seconds must be a boolean")
     pattern = "%I:%M" if fmt == "12h" else "%H:%M"
     text = now.strftime(pattern)
     if fmt == "12h":
         text = text.lstrip("0") or "12"
-    if show_seconds:
-        text += now.strftime(":%S")
-    return text
+    return text + (now.strftime(":%S") if show_seconds else "")
 
 
 def calendar_month(year=None, month=None, first_weekday=0):
@@ -75,12 +77,11 @@ def calendar_month(year=None, month=None, first_weekday=0):
     if isinstance(first_weekday, bool) or first_weekday not in (0, 6):
         raise ValueError("first_weekday must be 0 (Monday) or 6 (Sunday)")
     cal = calendar.Calendar(firstweekday=first_weekday)
-    headers = [calendar.day_abbr[(first_weekday + i) % 7] for i in range(7)]
     return {
         "year": year,
         "month": month,
         "month_name": calendar.month_name[month],
-        "headers": headers,
+        "headers": [calendar.day_abbr[(first_weekday + i) % 7] for i in range(7)],
         "weeks": cal.monthdayscalendar(year, month),
         "today": today.isoformat(),
     }
@@ -94,19 +95,25 @@ def folder_children(path, show_hidden=False):
         raise ValueError(f"folder is unavailable: {root}")
     children = [p for p in root.iterdir() if show_hidden or not p.name.startswith(".")]
     children.sort(key=lambda p: (not p.is_dir(), p.name.casefold(), p.name))
-    return [
-        {"name": child.name, "path": str(child), "is_dir": child.is_dir()}
-        for child in children
-    ]
+    return [{"name": child.name, "path": str(child), "is_dir": child.is_dir()} for child in children]
+
+
+def _finite(value, label):
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValueError(f"{label} must be a finite number")
+    return float(value)
 
 
 def fan_positions(count, origin, radius=112, angle_degrees=110, start_degrees=-145):
-    """Return deterministic radial positions used by animated folder presentations."""
+    """Return deterministic coordinates for a folder fan presentation."""
     if isinstance(count, bool) or not isinstance(count, int) or count < 0:
         raise ValueError("count must be a non-negative integer")
-    values = (radius, angle_degrees, start_degrees, *origin)
-    if len(origin) != 2 or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in values):
-        raise ValueError("geometry values must be finite numbers")
+    if not isinstance(origin, (tuple, list)) or len(origin) != 2:
+        raise ValueError("origin must contain x and y coordinates")
+    ox, oy = (_finite(value, "origin coordinate") for value in origin)
+    radius = _finite(radius, "radius")
+    angle_degrees = _finite(angle_degrees, "angle_degrees")
+    start_degrees = _finite(start_degrees, "start_degrees")
     if radius <= 0 or not 30 <= angle_degrees <= 180:
         raise ValueError("invalid folder fan geometry")
     if not count:
@@ -114,16 +121,13 @@ def fan_positions(count, origin, radius=112, angle_degrees=110, start_degrees=-1
     angles = [start_degrees + angle_degrees / 2] if count == 1 else [
         start_degrees + i * angle_degrees / (count - 1) for i in range(count)
     ]
-    ox, oy = origin
-    return [
-        {"x": ox + radius * math.cos(math.radians(angle)),
-         "y": oy + radius * math.sin(math.radians(angle)), "angle": angle}
-        for angle in angles
-    ]
+    return [{"x": ox + radius * math.cos(math.radians(angle)),
+             "y": oy + radius * math.sin(math.radians(angle)), "angle": angle}
+            for angle in angles]
 
 
 class MusicController:
-    """Small, timeout-bound playerctl adapter; never called from a draw routine."""
+    """Timeout-bound playerctl adapter; caller must not run it inside GTK callbacks."""
     ACTIONS = {"play-pause", "play", "pause", "next", "previous", "stop"}
 
     def __init__(self, executable="playerctl", timeout=1.5):
@@ -137,21 +141,19 @@ class MusicController:
         self.title = "Nothing playing"
         self._last_refresh = None
         self._last_error = ""
+        self._lock = threading.RLock()
 
     def _run(self, *args):
         try:
-            proc = subprocess.run(
-                [self.executable, *args], capture_output=True, text=True,
-                timeout=self.timeout, check=False,
-            )
+            proc = subprocess.run([self.executable, *args], capture_output=True, text=True,
+                                  timeout=self.timeout, check=False)
         except (OSError, subprocess.TimeoutExpired) as exc:
-            self._last_error = str(exc)
+            with self._lock:
+                self._last_error = str(exc)
             return False, ""
-        if proc.returncode:
-            self._last_error = (proc.stderr or "").strip()
-            return False, ""
-        self._last_error = ""
-        return True, proc.stdout.strip()
+        with self._lock:
+            self._last_error = "" if proc.returncode == 0 else (proc.stderr or "").strip()
+        return proc.returncode == 0, proc.stdout.strip()
 
     def refresh(self, now=None, force=False, interval=2.0):
         now = time.monotonic() if now is None else now
@@ -159,13 +161,16 @@ class MusicController:
             raise ValueError("now must be a finite timestamp")
         if isinstance(interval, bool) or not isinstance(interval, (int, float)) or not math.isfinite(interval) or interval <= 0:
             raise ValueError("interval must be positive and finite")
-        if not force and self._last_refresh is not None and now >= self._last_refresh and now - self._last_refresh < interval:
-            return self.snapshot()
+        with self._lock:
+            last = self._last_refresh
+            if not force and last is not None and now >= last and now - last < interval:
+                return self.snapshot()
         status_ok, status = self._run("status")
         title_ok, title = self._run("metadata", "--format", "{{artist}} — {{title}}")
-        self.status = status if status_ok and status else "Stopped"
-        self.title = title if title_ok and title else "Nothing playing"
-        self._last_refresh = float(now)
+        with self._lock:
+            self.status = status if status_ok and status else "Stopped"
+            self.title = title if title_ok and title else "Nothing playing"
+            self._last_refresh = float(now)
         return self.snapshot()
 
     def command(self, action):
@@ -173,18 +178,21 @@ class MusicController:
             raise ValueError("unsupported player action")
         ok, _ = self._run(action)
         if ok:
-            self._last_refresh = None
+            with self._lock:
+                self._last_refresh = None
         return ok
 
     def snapshot(self):
-        return {"status": self.status, "title": self.title, "error": self._last_error}
+        with self._lock:
+            return {"status": self.status, "title": self.title, "error": self._last_error}
 
 
 class StatsAPI:
-    """Small data interface for trusted plugins; no network provider is bundled."""
+    """Small in-memory usage API exposed to trusted plugins."""
     def __init__(self):
         self._usage = {}
         self._last_opened = {}
+        self._lock = threading.Lock()
 
     def record_open(self, key, when=None):
         if not isinstance(key, str) or not key.strip():
@@ -192,14 +200,17 @@ class StatsAPI:
         when = time.time() if when is None else when
         if isinstance(when, bool) or not isinstance(when, (int, float)) or not math.isfinite(when):
             raise ValueError("when must be a finite timestamp")
-        self._usage[key] = self._usage.get(key, 0) + 1
-        self._last_opened[key] = float(when)
+        with self._lock:
+            self._usage[key] = self._usage.get(key, 0) + 1
+            self._last_opened[key] = float(when)
 
     def usage_count(self, key):
-        return self._usage.get(key, 0)
+        with self._lock:
+            return self._usage.get(key, 0)
 
     def last_opened(self, key):
-        return self._last_opened.get(key)
+        with self._lock:
+            return self._last_opened.get(key)
 
     def cpu_percent(self):
         try:
@@ -208,12 +219,14 @@ class StatsAPI:
             return None
 
     def snapshot(self):
-        return {"usage": dict(self._usage), "last_opened": dict(self._last_opened),
-                "cpu_percent": self.cpu_percent()}
+        with self._lock:
+            usage = dict(self._usage)
+            last_opened = dict(self._last_opened)
+        return {"usage": usage, "last_opened": last_opened, "cpu_percent": self.cpu_percent()}
 
 
 class PluginManager:
-    """Load explicitly allowlisted Python plugins from a user-owned directory."""
+    """Load explicitly allowlisted Python modules from a user-owned directory."""
     REQUIRED = ("on_load", "on_click", "render", "on_tick", "config_schema")
 
     def __init__(self, directory, allowlist=()):
@@ -236,12 +249,13 @@ class PluginManager:
         self.errors.clear()
         if not self.directory.is_dir():
             return {}
+        directory = self.directory.resolve()
         for name in sorted(self.allowlist):
-            path = (self.directory / (name + ".py")).resolve()
-            if path.parent != self.directory.resolve() or not path.is_file():
+            path = (directory / (name + ".py")).resolve()
+            if path.parent != directory or not path.is_file():
                 self.errors[name] = "Plugin file is missing or outside plugin directory"
                 continue
-            module_name = "_glassdock_extension_" + hashlib.sha256(str(path).encode()).hexdigest()[:16]
+            module_name = "_glassdock_extension_" + hashlib.sha256(str(path).encode("utf-8")).hexdigest()[:16]
             try:
                 spec = importlib.util.spec_from_file_location(module_name, path)
                 if spec is None or spec.loader is None:
@@ -254,6 +268,8 @@ class PluginManager:
                 if missing:
                     raise TypeError("missing methods: " + ", ".join(missing))
                 schema = plugin.config_schema()
+                if not isinstance(schema, dict):
+                    raise TypeError("config_schema() must return an object")
                 json.dumps(schema, allow_nan=False)
                 plugin.on_load({"stats": self.stats, "config": {}})
                 self.plugins[name] = plugin
@@ -273,6 +289,7 @@ class PluginManager:
             icon = value.get("icon", "")
             if not isinstance(label, str) or not isinstance(icon, str):
                 raise TypeError("plugin label and icon must be strings")
+            self.errors.pop(name, None)
             return {"label": label[:100], "icon": icon[:500]}
         except Exception:
             self.errors[name] = traceback.format_exc(limit=3)
@@ -282,6 +299,7 @@ class PluginManager:
         try:
             result = self.plugins[name].on_click(item)
             json.dumps(result, allow_nan=False)
+            self.errors.pop(name, None)
             return result
         except Exception:
             self.errors[name] = traceback.format_exc(limit=3)
@@ -291,7 +309,7 @@ class PluginManager:
         now = time.time() if now is None else now
         if isinstance(now, bool) or not isinstance(now, (int, float)) or not math.isfinite(now):
             raise ValueError("now must be finite")
-        for name, plugin in self.plugins.items():
+        for name, plugin in list(self.plugins.items()):
             try:
                 plugin.on_tick(float(now))
             except Exception:

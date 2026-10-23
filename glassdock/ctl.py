@@ -13,8 +13,8 @@ USAGE = """usage: glassdock-ctl <command> [arg]
   toggle          show/hide the dock (overrides auto-hide until 'auto')
   show | hide     force the dock visible / hidden
   auto            return to automatic show/hide behavior
-  launch N        activate the Nth visible item (1-based, separators not counted)
-  badge N COUNT   set configured item N's badge count (Settings > Launchers order)
+  launch N        activate the Nth item (1-based, separators not counted)
+  badge N COUNT   set an item's badge count (0 clears it; N follows Settings > Launchers order)
   quit            stop the dock
 """
 
@@ -33,6 +33,12 @@ def main(argv=None):
     elif argv[0] == "badge":
         if len(argv) != 3:
             print("badge needs an item index and a non-negative count", file=sys.stderr)
+            return 2
+        try:
+            if int(argv[1]) < 1 or int(argv[2]) < 0:
+                raise ValueError
+        except ValueError:
+            print("badge expects INDEX >= 1 and COUNT >= 0", file=sys.stderr)
             return 2
         msg["index"], msg["count"] = argv[1], argv[2]
     reply = control.send_command(msg)

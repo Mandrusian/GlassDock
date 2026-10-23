@@ -10,6 +10,7 @@ Layout: a grouped sidebar, a pinned live dock preview, and card-style pages.
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import threading
@@ -36,12 +37,11 @@ from .core import control, sway  # noqa: E402
 from .core.colors import normalize_color, parse_color, with_alpha  # noqa: E402
 from .core.desktop import is_launchable, load_entries  # noqa: E402
 from .core.icons import candidate_names, find_icon_file  # noqa: E402
-from .core.themes import CUSTOM, THEMES, theme_label  # noqa: E402
+from .core.themes import CUSTOM, THEMES  # noqa: E402
 from .core import usertheme as UT  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-CONTROL_TYPES = ("bool", "int", "float", "choice", "color", "text")  # types make_control supports
 
 CATEGORY_BLURBS = {
     "style": "Colors, borders, shadow and glass effects.",
@@ -50,7 +50,7 @@ CATEGORY_BLURBS = {
     "indicators": "How running and focused apps are marked.",
     "position": "Which edge the dock lives on.",
     "behavior": "Auto-hide, stacking and commands.",
-    "extensions": "Clock, calendar, music, folders, badges and trusted Python plugins.",
+    "extensions": "Clock, calendar, music controls, folders, badges, and trusted plugins.",
 }
 
 # page name -> (sidebar icon fallbacks)
@@ -62,7 +62,7 @@ PAGE_ICONS = {
     "indicators": ("media-record-symbolic", "emblem-ok-symbolic"),
     "position": ("go-bottom-symbolic", "view-pin-symbolic"),
     "behavior": ("preferences-system-symbolic", "emblem-system-symbolic"),
-    "extensions": ("application-x-addon-symbolic", "preferences-other-symbolic"),
+    "extensions": ("application-x-addon-symbolic", "preferences-system-symbolic"),
     "launchers": ("view-app-grid-symbolic", "view-list-symbolic"),
     "monitors": ("video-display-symbolic", "computer-symbolic"),
     "status": ("utilities-system-monitor-symbolic", "dialog-information-symbolic"),
@@ -113,6 +113,8 @@ button.md-theme-card.active { border-color: @theme_selected_bg_color; box-shadow
                   border-radius: 99px; padding: 0 8px; font-size: 10px; font-weight: 700; }
 
 .md-pill { border-radius: 99px; padding: 2px 10px; font-size: 12px; background: alpha(@theme_fg_color, 0.08); }
+.md-pill.ok { background: rgba(46, 194, 126, 0.18); color: #1a8d56; }
+.md-pill.bad { background: rgba(224, 27, 36, 0.16); color: #c01c28; }
 .md-badge { border-radius: 99px; padding: 2px 10px; font-size: 12px; font-weight: 600; }
 .md-badge.ok { background: rgba(46, 194, 126, 0.18); color: #1a8d56; }
 .md-badge.off { background: rgba(229, 165, 10, 0.2); color: #a8740a; }
@@ -181,7 +183,8 @@ class Store:
             return False  # our own write (or edits still pending) wins
         try:
             new = C.load_config(entries=self.entries)
-        except Exception:
+        except Exception as exc:
+            print("[glassdock-settings] external config reload failed: %s" % exc, file=sys.stderr)
             return False
         if new == self.cfg:
             return False
@@ -308,11 +311,14 @@ class Store:
                 raise ValueError("That file is too large to be a settings file.")
             with open(path, "r", encoding="utf-8") as fh:
                 raw = json.load(fh)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
             raise ValueError(bad) from exc
         if not isinstance(raw, dict):
             raise ValueError(bad)
-        new = C.validate(C.migrate(raw), self.entries)
+        try:
+            new = C.validate(C.migrate(raw), self.entries)
+        except (TypeError, ValueError, KeyError, AttributeError, RecursionError) as exc:
+            raise ValueError(bad) from exc
         new["items"], new["monitors"] = self.cfg["items"], self.cfg["monitors"]
         self.cfg = new
         self.cfg["theme"] = self.detect_theme()
@@ -344,8 +350,12 @@ class Store:
         self.changed()
 
     def changed(self):
+        # A view refresh must not prevent a user change from being persisted.
         for fn in list(self.listeners):
-            fn()
+            try:
+                fn()
+            except Exception as exc:
+                print("[glassdock-settings] view refresh failed: %s" % exc, file=sys.stderr)
         if self.save_id is not None:
             GLib.source_remove(self.save_id)
         self.save_id = GLib.timeout_add(150, self._save)
@@ -408,7 +418,8 @@ def make_control(setting, value, on_change):
         scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, setting.min, setting.max, setting.step or 1)
         scale.set_digits(digits)
         scale.set_draw_value(False)
-        scale.set_size_request(220, -1)
+        scale.set_size_request(160, -1)
+        scale.set_hexpand(True)
         scale.set_valign(Gtk.Align.CENTER)
         scale.set_value(float(value))
         readout = Gtk.Label(xalign=1)
@@ -418,7 +429,7 @@ def make_control(setting, value, on_change):
             readout.set_text(("%.*f" % (digits, v)) + unit)
         show(float(value))
         scale.connect("value-changed", guarded(lambda *_: (show(scale.get_value()), on_change(scale.get_value()))))
-        box.pack_start(scale, False, False, 0)
+        box.pack_start(scale, True, True, 0)
         box.pack_start(readout, False, False, 0)
 
         def setv(v):
@@ -475,7 +486,8 @@ def make_control(setting, value, on_change):
 
     if t == "text":
         w = Gtk.Entry()
-        w.set_width_chars(20)
+        w.set_width_chars(14)
+        w.set_max_width_chars(28)
         w.set_text(str(value))
         w.set_valign(Gtk.Align.CENTER)
         w.connect("changed", guarded(lambda *_: on_change(w.get_text())))
@@ -902,7 +914,7 @@ class ThemesPage(Gtk.Box):
         btn.set_relief(Gtk.ReliefStyle.NONE)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         area = Gtk.DrawingArea()
-        area.set_size_request(200, 96)
+        area.set_size_request(180, 96)
         if info is None:  # the live "Custom" card follows the working config
             def getter(k):
                 return self.store.get(k)
@@ -1002,24 +1014,26 @@ class ThemesPage(Gtk.Box):
 
     def save_current(self):
         dlg = ThemeNameDialog(self.win(), "Save current look as a theme", "Save", desc="", store=self.store)
-        if dlg.run() == Gtk.ResponseType.OK:
-            name, desc = dlg.values()
-            try:
-                self.store.save_current_theme(name, desc)
-            except UT.ThemeError as exc:
-                dlg.destroy()
-                return self.fail(exc)
-        dlg.destroy()
+        try:
+            if dlg.run() == Gtk.ResponseType.OK:
+                name, desc = dlg.values()
+                try:
+                    self.store.save_current_theme(name, desc)
+                except (UT.ThemeError, OSError, ValueError) as exc:
+                    self.fail(exc)
+        finally:
+            dlg.destroy()
 
     def rename(self, name):
         dlg = ThemeNameDialog(self.win(), "Rename theme", "Rename", name=self.store.theme_label(name))
-        if dlg.run() == Gtk.ResponseType.OK:
-            try:
-                self.store.rename_theme(name, dlg.values()[0])
-            except UT.ThemeError as exc:
-                dlg.destroy()
-                return self.fail(exc)
-        dlg.destroy()
+        try:
+            if dlg.run() == Gtk.ResponseType.OK:
+                try:
+                    self.store.rename_theme(name, dlg.values()[0])
+                except (UT.ThemeError, OSError, ValueError) as exc:
+                    self.fail(exc)
+        finally:
+            dlg.destroy()
 
     def delete(self, name):
         resp = message(self.win(), "Delete “%s”?" % self.store.theme_label(name),
@@ -1028,7 +1042,7 @@ class ThemesPage(Gtk.Box):
         if resp == Gtk.ResponseType.OK:
             try:
                 self.store.delete_theme(name)
-            except UT.ThemeError as exc:
+            except (UT.ThemeError, OSError, ValueError) as exc:
                 self.fail(exc)
 
     def export_current(self):
@@ -1038,30 +1052,44 @@ class ThemesPage(Gtk.Box):
     def export(self, name):
         base = UT.slugify(self.store.theme_label(name) if name != CUSTOM else "my-theme")
         dlg = json_chooser(self.win(), "Export theme", save=True, name=base + ".json")
-        if dlg.run() == Gtk.ResponseType.ACCEPT:
+        try:
+            if dlg.run() != Gtk.ResponseType.ACCEPT:
+                return
             try:
-                self.store.export_theme(name, dlg.get_filename())
-            except UT.ThemeError as exc:
-                return self.fail(exc)
+                path = dlg.get_filename()
+                self.store.export_theme(name, path)
+            except (UT.ThemeError, OSError, ValueError) as exc:
+                self.fail(exc)
+                return
             cb = getattr(self.store, "on_saved", None)
             if cb:
-                cb("Exported theme to %s" % os.path.basename(dlg.get_filename()), True)
+                cb("Exported theme to %s" % os.path.basename(path), True)
+        finally:
+            dlg.destroy()
 
     def import_file(self):
         dlg = json_chooser(self.win(), "Import theme")
-        if dlg.run() != Gtk.ResponseType.ACCEPT:
-            return
         try:
-            name, info = self.store.import_theme(dlg.get_filename())
-        except UT.ThemeError as exc:
-            return self.fail(exc)
+            if dlg.run() != Gtk.ResponseType.ACCEPT:
+                return
+            try:
+                name, info = self.store.import_theme(dlg.get_filename())
+            except (UT.ThemeError, OSError, ValueError) as exc:
+                self.fail(exc)
+                return
+        finally:
+            dlg.destroy()
+        ignored = info.get("ignored", [])
         extra = ""
-        if info["ignored"]:
-            extra = "\n\n%d setting(s) in the file aren't appearance options and were skipped." % len(info["ignored"])
-        resp = message(self.win(), "Imported “%s”" % info["label"], "Apply it to your dock now?" + extra,
+        if ignored:
+            extra = "\n\n%d setting(s) in the file aren't appearance options and were skipped." % len(ignored)
+        resp = message(self.win(), "Imported “%s”" % info.get("label", name), "Apply it to your dock now?" + extra,
                        Gtk.MessageType.QUESTION, Gtk.ButtonsType.YES_NO)
         if resp == Gtk.ResponseType.YES:
-            self.store.apply_theme(name)
+            try:
+                self.store.apply_theme(name)
+            except (UT.ThemeError, OSError, ValueError) as exc:
+                self.fail(exc)
 
 
 # ------------------------------------------------------------------ launchers
@@ -1305,14 +1333,14 @@ class LaunchersPage(Gtk.Box):
         pbox.set_margin_top(6)
         pbox.set_margin_bottom(6)
         for text, cb in [("Custom launcher…", self.add_custom),
-                         ("Folder…", self.add_folder),
+                         ("Separator", lambda *_: self.append({"type": "separator"})),
+                         ("Applications button", lambda *_: self.append({"type": "special", "kind": "apps"})),
+                         ("Trash", lambda *_: self.append({"type": "special", "kind": "trash"})),
                          ("Clock widget", lambda *_: self.add_widget("clock")),
                          ("Calendar widget", lambda *_: self.add_widget("calendar")),
                          ("Music controls", lambda *_: self.add_widget("music")),
-                         ("Plugin widget…", self.add_plugin_widget),
-                         ("Separator", lambda *_: self.append({"type": "separator"})),
-                         ("Applications button", lambda *_: self.append({"type": "special", "kind": "apps"})),
-                         ("Trash", lambda *_: self.append({"type": "special", "kind": "trash"}))]:
+                         ("Folder…", self.add_folder),
+                         ("Plugin widget…", self.add_plugin)]:
             item = Gtk.ModelButton(text=text)
             item.connect("clicked", lambda _b, f=cb: (pop.popdown(), f()))
             pbox.pack_start(item, False, False, 0)
@@ -1343,15 +1371,16 @@ class LaunchersPage(Gtk.Box):
             return gicon_for(info["icon"]), info["name"] + "  ·  built-in"
         if t == "launcher":
             return gicon_for(spec.get("icon")), spec["name"] + "  ·  custom launcher"
-        if t == "folder":
-            return gicon_for(spec.get("icon") or "folder"), spec.get("name") or os.path.basename(spec.get("path", "")) + "  ·  folder"
         if t == "widget":
-            labels = {"clock": "Clock", "calendar": "Calendar", "music": "Music controls"}
+            names = {"clock": "Clock", "calendar": "Calendar", "music": "Music controls"}
             icons = {"clock": "clock", "calendar": "x-office-calendar", "music": "audio-x-generic"}
-            kind = spec.get("kind")
-            return gicon_for(icons.get(kind, "applications-system")), labels.get(kind, "Widget") + "  ·  built-in"
+            kind = spec.get("kind", "")
+            return gicon_for(icons.get(kind, "application-x-executable")), names.get(kind, kind) + "  ·  widget"
+        if t == "folder":
+            name = spec.get("name") or os.path.basename(spec.get("path", "")) or "Folder"
+            return gicon_for(spec.get("icon") or "folder"), name + "  ·  folder"
         if t == "plugin":
-            return gicon_for("application-x-python"), spec.get("name", "Plugin") + "  ·  trusted plugin"
+            return gicon_for(spec.get("icon") or "application-x-addon-symbolic"), spec.get("name", "Plugin") + "  ·  plugin"
         entry = self.store.entries.get(spec["id"])
         if entry is None:
             return gicon_for("dialog-question-symbolic"), "%s  (not installed)" % spec["id"]
@@ -1417,61 +1446,84 @@ class LaunchersPage(Gtk.Box):
             self.append(dlg.spec())
         dlg.destroy()
 
-    def add_folder(self, *_):
-        dlg = Gtk.FileChooserDialog(title="Add folder to GlassDock", parent=self.window,
-                                    action=Gtk.FileChooserAction.SELECT_FOLDER)
-        dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Add Folder", Gtk.ResponseType.OK)
-        dlg.set_select_multiple(False)
-        if dlg.run() == Gtk.ResponseType.OK:
-            path = dlg.get_filename()
-            if path and os.path.isdir(path):
-                name = os.path.basename(path.rstrip(os.sep)) or path
-                self.append({"type": "folder", "path": path, "name": name, "icon": "folder"})
-        dlg.destroy()
-
     def add_widget(self, kind):
         if kind not in ("clock", "calendar", "music"):
             return
-        items = self.current_items()
-        if any(i.get("type") == "widget" and i.get("kind") == kind for i in items):
-            message(self.window, "Widget already added", "Each built-in widget can be added once.")
+        if any(spec.get("type") == "widget" and spec.get("kind") == kind for spec in self.current_items()):
+            message(self.window, "That widget is already in the dock.")
             return
         self.append({"type": "widget", "kind": kind})
 
-    def add_plugin_widget(self, *_):
-        allowlist = [part.strip() for part in self.store.get("extensions.plugin_allowlist").split(",")
-                     if part.strip()]
-        if not self.store.get("extensions.plugins_enabled"):
-            message(self.window, "Plugins are disabled", "Enable trusted user plugins in Widgets & Extensions settings first.")
-            return
-        if not allowlist:
-            message(self.window, "No plugins are allowlisted",
-                    "Add the filename (without .py) to the plugin allowlist after reviewing the code.")
-            return
-        dlg = Gtk.Dialog(title="Add plugin widget", transient_for=self.window, flags=Gtk.DialogFlags.MODAL)
-        dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
-        dlg.add_button("Add", Gtk.ResponseType.OK)
-        box = dlg.get_content_area()
-        box.set_spacing(8)
-        box.set_border_width(12)
-        box.pack_start(label("Plugin module name (without .py):"), False, False, 0)
-        entry = Gtk.Entry()
-        entry.set_placeholder_text("example_clock")
-        entry.set_activates_default(True)
-        box.pack_start(entry, False, False, 0)
-        dlg.set_default_response(Gtk.ResponseType.OK)
-        dlg.show_all()
-        response = dlg.run()
-        name = entry.get_text().strip()
-        dlg.destroy()
-        if response == Gtk.ResponseType.OK:
-            if name not in allowlist:
-                message(self.window, "Plugin not allowlisted", "Only modules listed in Widgets & Extensions settings may be added.")
+    def add_folder(self, *_):
+        chooser = Gtk.FileChooserNative(title="Choose a folder for GlassDock", transient_for=self.window,
+                                        action=Gtk.FileChooserAction.SELECT_FOLDER,
+                                        accept_label="Add folder", cancel_label="Cancel")
+        try:
+            if chooser.run() != Gtk.ResponseType.ACCEPT:
                 return
-            if any(i.get("type") == "plugin" and i.get("name") == name for i in self.current_items()):
-                message(self.window, "Plugin already added", "This plugin is already on the dock.")
-                return
-            self.append({"type": "plugin", "name": name})
+            path = chooser.get_filename()
+        finally:
+            chooser.destroy()
+        if not path:
+            return
+        path = os.path.abspath(os.path.expanduser(path))
+        if not os.path.isdir(path):
+            message(self.window, "Folder not found", path, Gtk.MessageType.ERROR)
+            return
+        if any(spec.get("type") == "folder" and os.path.abspath(os.path.expanduser(spec.get("path", ""))) == path
+               for spec in self.current_items()):
+            message(self.window, "That folder is already in the dock.")
+            return
+        self.append({"type": "folder", "path": path,
+                     "name": os.path.basename(path.rstrip(os.sep)) or path, "icon": "folder"})
+
+    def add_plugin(self, *_):
+        """Explicitly trust and add a Python plugin found in the configured plugin directory."""
+        plugin_directory = self.store.get("extensions.plugin_directory").strip()
+        if not plugin_directory:
+            plugin_directory = os.path.join(C.config_dir(), "plugins")
+        plugin_directory = os.path.abspath(os.path.expanduser(plugin_directory))
+        os.makedirs(plugin_directory, exist_ok=True)
+        names = sorted(os.path.splitext(name)[0] for name in os.listdir(plugin_directory)
+                       if name.endswith(".py") and not name.startswith("_")
+                       and os.path.isfile(os.path.join(plugin_directory, name))
+                       and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", name[:-3]))
+        if not names:
+            message(self.window, "No plugin modules found",
+                    "Place a reviewed .py plugin in %s, then try again. Plugins run as your user and are not sandboxed."
+                    % plugin_directory, Gtk.MessageType.INFO)
+            return
+        dialog = Gtk.Dialog(title="Add trusted plugin", transient_for=self.window, modal=True)
+        dialog.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Allow and add", Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
+        box = dialog.get_content_area()
+        box.set_spacing(10)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(box, "set_margin_" + side)(16)
+        box.pack_start(heading("Choose a plugin", "Choose code you have reviewed."), False, False, 0)
+        combo = Gtk.ComboBoxText()
+        for name in names:
+            combo.append_text(name)
+        combo.set_active(0)
+        box.pack_start(combo, False, False, 0)
+        warning = label("Trust warning: plugin code executes with your account permissions; it is not a security sandbox.",
+                        "md-page-sub", wrap=True)
+        box.pack_start(warning, False, False, 0)
+        dialog.show_all()
+        response = dialog.run()
+        name = combo.get_active_text()
+        dialog.destroy()
+        if response != Gtk.ResponseType.OK or not name:
+            return
+        existing = [part.strip() for part in self.store.get("extensions.plugin_allowlist").split(",") if part.strip()]
+        if name not in existing:
+            existing.append(name)
+        self.store.set("extensions.plugin_allowlist", ", ".join(existing))
+        self.store.set("extensions.plugins_enabled", True)
+        if any(spec.get("type") == "plugin" and spec.get("name") == name for spec in self.current_items()):
+            message(self.window, "That plugin is already in the dock.")
+            return
+        self.append({"type": "plugin", "name": name})
 
     def edit_row(self, tree, path, col):
         self.edit_at(path.get_indices()[0])
@@ -1567,7 +1619,7 @@ class MonitorsPage(Gtk.Box):
                                 "disable its dock or override a few settings just for it."), False, False, 0)
         top = Gtk.Box(spacing=8)
         self.combo = Gtk.ComboBoxText.new_with_entry()
-        self.combo.set_size_request(260, -1)
+        self.combo.set_size_request(180, -1)
         top.pack_start(label("Monitor", "md-key"), False, False, 0)
         top.pack_start(self.combo, False, False, 0)
         top.pack_start(text_button("Detect monitors", lambda *_: self.detect()), False, False, 0)
@@ -1583,12 +1635,15 @@ class MonitorsPage(Gtk.Box):
     def detect(self):
         names = []
         err = ""
+        ipc = None
         try:
             ipc = sway.SwayIPC()
             names = [o["name"] for o in sway.parse_outputs(ipc.get_outputs())]
-            ipc.close()
         except (sway.SwayError, OSError) as exc:
             err = "Could not query Sway (%s). Type an output name (e.g. eDP-1) to configure it." % exc
+        finally:
+            if ipc is not None:
+                ipc.close()
         for n in self.store.cfg["monitors"]:
             if n not in names:
                 names.append(n)
@@ -1725,7 +1780,11 @@ class StatusPage(Gtk.Box):
         self.pending = True
 
         def work():
-            reply = control.send_command({"cmd": "status"})
+            try:
+                reply = control.send_command({"cmd": "status"})
+            except Exception as exc:
+                print("[glassdock-settings] status request failed: %s" % exc, file=sys.stderr)
+                reply = None
             GLib.idle_add(self.apply, reply)
         threading.Thread(target=work, daemon=True).start()
 
@@ -1734,26 +1793,34 @@ class StatusPage(Gtk.Box):
         v = self.values
         v["app"].set_text("v%s" % __version__)
         v["config"].set_text(C.config_path())
-        if r is None:
+        if not isinstance(r, dict) or not r.get("ok", False):
             self.set_badge("Not running", "off")
             for k in ("version", "sway", "outputs", "windows", "items", "blur", "theme", "autostart"):
                 v[k].set_text("–")
             return False
         self.set_badge("Running", "ok")
-        v["version"].set_text("v%s" % r.get("version"))
+        v["version"].set_text("v%s" % r.get("version", "?"))
         v["sway"].set_text("connected" if r.get("sway_ipc") else "not connected (no running indicators)")
-        v["outputs"].set_text(", ".join(r.get("outputs", [])) or "none")
-        v["windows"].set_text(str(r.get("windows")))
-        v["items"].set_text(str(r.get("items")))
-        v["blur"].set_text(str(r.get("blur")))
-        v["theme"].set_text(str(r.get("theme")))
-        v["autostart"].set_text("%s (%s)" % ("on" if r.get("autostart") else "off", r.get("autostart_wms")))
+        outputs = r.get("outputs", [])
+        if not isinstance(outputs, (list, tuple)):
+            outputs = []
+        v["outputs"].set_text(", ".join(str(output) for output in outputs) or "none")
+        v["windows"].set_text(str(r.get("windows", "–")))
+        v["items"].set_text(str(r.get("items", "–")))
+        v["blur"].set_text(str(r.get("blur", "–")))
+        v["theme"].set_text(str(r.get("theme", "–")))
+        v["autostart"].set_text("%s (%s)" % ("on" if r.get("autostart") else "off", r.get("autostart_wms", "unknown")))
         return False
 
     def _spawn_dock(self):
-        # go through the launcher script so the layer-shell preload is applied
-        subprocess.Popen([os.path.join(ROOT, "bin", "glassdock")], cwd=ROOT,
-                         start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Go through the launcher script so the layer-shell preload is applied.
+        try:
+            subprocess.Popen([os.path.join(ROOT, "bin", "glassdock")], cwd=ROOT,
+                             start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except OSError as exc:
+            self.set_badge("Start failed", "bad")
+            self.values["version"].set_text("Could not start dock: %s" % exc)
+            return
         GLib.timeout_add(900, lambda: (self.refresh(), False)[1])
 
     def start(self, *_):
@@ -1770,7 +1837,11 @@ class StatusPage(Gtk.Box):
         GLib.timeout_add(600, lambda: (self._spawn_dock(), False)[1])
 
     def open_folder(self, *_):
-        subprocess.Popen(["xdg-open", C.config_dir()], start_new_session=True)
+        try:
+            subprocess.Popen(["xdg-open", C.config_dir()], start_new_session=True)
+        except OSError as exc:
+            if self.store.on_saved:
+                self.store.on_saved("Could not open config folder: %s" % exc, False)
 
 
 # --------------------------------------------------------------------- window
@@ -1793,7 +1864,7 @@ class SettingsWindow(Gtk.Window):
         self.add(root)
 
         side = style(Gtk.Box(orientation=Gtk.Orientation.VERTICAL), "md-sidebar")
-        side.set_size_request(236, -1)
+        side.set_size_request(208, -1)
         self.search = style(Gtk.SearchEntry(), "md-search")
         self.search.set_placeholder_text("Search settings  (Ctrl+F)")
         self.search.connect("search-changed", self.on_search)
@@ -1824,11 +1895,8 @@ class SettingsWindow(Gtk.Window):
                 self.add_page(cat, text, self.category_page(cat, text))
         self.add_section("Dock")
         for cat, text in C.CATEGORIES:
-            if cat in ("position", "behavior"):
+            if cat in ("position", "behavior", "extensions"):
                 self.add_page(cat, text, self.category_page(cat, text))
-        self.add_section("Widgets & Extensions")
-        self.add_page("extensions", "Widgets & Extensions",
-                      self.category_page("extensions", "Widgets & Extensions"))
         self.launchers = LaunchersPage(self.store, self)
         self.add_page("launchers", "Launchers", self.launchers)
         self.add_page("monitors", "Monitors", MonitorsPage(self.store))
@@ -1845,6 +1913,12 @@ class SettingsWindow(Gtk.Window):
             GLib.idle_add(lambda: (self.launchers.edit_at(edit_index), False)[1])
         else:
             self.select_page("themes")
+
+    def open_config_folder(self, *_):
+        try:
+            subprocess.Popen(["xdg-open", C.config_dir()], start_new_session=True)
+        except OSError as exc:
+            self.on_saved("Could not open config folder: %s" % exc, False)
 
     def build_header(self):
         hb = Gtk.HeaderBar()
@@ -1864,8 +1938,7 @@ class SettingsWindow(Gtk.Window):
         for text, cb in [("Export all settings…", self.export_settings),
                          ("Import settings…", self.import_settings),
                          ("Reset all settings…", self.reset_all),
-                         ("Open config folder", lambda *_: subprocess.Popen(
-                             ["xdg-open", C.config_dir()], start_new_session=True)),
+                         ("Open config folder", self.open_config_folder),
                          ("About GlassDock", self.show_about)]:
             item = Gtk.ModelButton(text=text)
             item.connect("clicked", lambda _b, f=cb: (pop.popdown(), f()))
@@ -1988,6 +2061,10 @@ class SettingsWindow(Gtk.Window):
 
     def on_saved(self, msg, ok):
         self.status.set_text(msg)
+        ctx = self.status.get_style_context()
+        ctx.remove_class("ok")
+        ctx.remove_class("bad")
+        ctx.add_class("ok" if ok else "bad")
         self.status.show()
         if self.status_timer is not None:
             GLib.source_remove(self.status_timer)
@@ -2001,18 +2078,27 @@ class SettingsWindow(Gtk.Window):
 
     def export_settings(self, *_):
         dlg = json_chooser(self, "Export all settings", save=True, name="glassdock-settings.json")
-        if dlg.run() == Gtk.ResponseType.ACCEPT:
+        try:
+            if dlg.run() != Gtk.ResponseType.ACCEPT:
+                return
+            path = dlg.get_filename()
             try:
-                self.store.export_settings(dlg.get_filename())
+                self.store.export_settings(path)
             except OSError as exc:
                 message(self, "Couldn't export", exc.strerror or str(exc), Gtk.MessageType.ERROR)
             else:
-                self.on_saved("Exported settings to %s" % os.path.basename(dlg.get_filename()), True)
+                self.on_saved("Exported settings to %s" % os.path.basename(path), True)
+        finally:
+            dlg.destroy()
 
     def import_settings(self, *_):
         dlg = json_chooser(self, "Import settings")
-        if dlg.run() != Gtk.ResponseType.ACCEPT:
-            return
+        try:
+            if dlg.run() != Gtk.ResponseType.ACCEPT:
+                return
+            path = dlg.get_filename()
+        finally:
+            dlg.destroy()
         resp = message(self, "Replace your appearance and behavior settings?",
                        "Your launchers and monitor setup are kept. Only import files you trust: "
                        "settings can include commands, such as the Applications button command.",
@@ -2020,7 +2106,7 @@ class SettingsWindow(Gtk.Window):
         if resp != Gtk.ResponseType.OK:
             return
         try:
-            self.store.import_settings(dlg.get_filename())
+            self.store.import_settings(path)
         except ValueError as exc:
             message(self, "Couldn't import", str(exc), Gtk.MessageType.ERROR)
 
@@ -2052,13 +2138,18 @@ class SettingsWindow(Gtk.Window):
         dlg.destroy()
 
     def on_close(self, *_):
-        self.store.flush()
+        try:
+            self.store.flush()
+        except OSError as exc:
+            self.on_saved("Could not save pending changes: %s" % exc, False)
+            # Keep the window open so the user can correct a permissions/disk error.
+            return True
         return False
 
 
 def _set_app_icon():
     """Window/default icon from the bundled artwork (the dock itself uses the desktop entry)."""
-    for fname in ("glassdock.svg", "glassdock.svg", "moderndock.svg"):
+    for fname in ("glassdock.svg", "moderndock.svg"):
         p = os.path.join(ROOT, "assets", fname)
         if os.path.exists(p):
             try:

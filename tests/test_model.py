@@ -85,24 +85,26 @@ class MatchTests(unittest.TestCase):
                               [win(1, "a")])
         self.assertEqual([len(i.windows) for i in items], [0, 1])
 
+    def test_extension_item_models_and_badges(self):
+        specs = [
+            {"type": "folder", "path": "/tmp", "name": "Temp", "badge_count": 3},
+            {"type": "widget", "kind": "clock"},
+            {"type": "widget", "kind": "calendar"},
+            {"type": "widget", "kind": "music"},
+            {"type": "plugin", "name": "sample"},
+            {"type": "launcher", "name": "Alerts", "exec": "true", "badge_count": 7},
+        ]
+        items = M.build_items(specs, ENTRIES, [])
+        self.assertEqual([item.kind for item in items], ["folder", "widget", "widget", "widget", "plugin", "launcher"])
+        self.assertEqual(items[0].path, "/tmp")
+        self.assertEqual(items[0].badge_count, 3)
+        self.assertEqual([item.extension for item in items[1:4]], ["clock", "calendar", "music"])
+        self.assertEqual(items[4].extension, "sample")
+        self.assertEqual(items[5].badge_count, 7)
+
     def test_no_windows(self):
         items = M.build_items(CFG_ITEMS, ENTRIES, [])
         self.assertTrue(all(not i.running for i in items))
-
-    def test_native_extension_items_are_normal_dock_items(self):
-        specs = [
-            {"type": "widget", "kind": "clock"},
-            {"type": "widget", "kind": "calendar"},
-            {"type": "widget", "kind": "music", "badge_count": 3},
-            {"type": "folder", "path": "/tmp", "name": "Files"},
-            {"type": "plugin", "name": "example_clock"},
-        ]
-        items = M.build_items(specs, ENTRIES, [])
-        self.assertEqual([item.kind for item in items], ["widget", "widget", "widget", "folder", "plugin"])
-        self.assertEqual([item.extension for item in items[:3]], ["clock", "calendar", "music"])
-        self.assertEqual(items[2].badge_count, 3)
-        self.assertEqual(items[3].path, "/tmp")
-        self.assertEqual(items[4].extension, "example_clock")
 
 
 class MagnifyTests(unittest.TestCase):

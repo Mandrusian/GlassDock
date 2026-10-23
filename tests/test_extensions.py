@@ -1,3 +1,4 @@
+"""Regression tests for built-in widgets, badges, folders, media, and plugins."""
 import subprocess
 import tempfile
 import unittest
@@ -90,8 +91,8 @@ class MusicControllerTests(unittest.TestCase):
             self.assertEqual(run.call_count, 2)
 
     def test_command_success_does_not_need_stdout(self):
-        response = subprocess.CompletedProcess([], 0, "", "")
-        with patch("glassdock.core.extensions.subprocess.run", return_value=response):
+        with patch("glassdock.core.extensions.subprocess.run",
+                   return_value=subprocess.CompletedProcess([], 0, "", "")):
             self.assertTrue(E.MusicController().command("next"))
 
     def test_failed_or_missing_player_is_safe(self):
@@ -106,20 +107,20 @@ class MusicControllerTests(unittest.TestCase):
 
 
 class PluginManagerTests(unittest.TestCase):
-    PLUGIN = """
+    PLUGIN = '''
 class Example:
     def on_load(self, context):
         self.stats = context['stats']
     def on_click(self, item=None):
         return {'action': 'toast', 'message': 'Hello'}
     def render(self, context=None):
-        return {'label': 'Example clock', 'icon': 'clock'}
+        return {'label': 'Example widget', 'icon': 'clock'}
     def on_tick(self, now):
-        return None
+        self.now = now
     def config_schema(self):
         return {'enabled': {'default': True}}
 PLUGIN = Example()
-"""
+'''
 
     def test_only_allowlisted_plugin_is_loaded(self):
         with tempfile.TemporaryDirectory() as td:
@@ -128,7 +129,7 @@ PLUGIN = Example()
             (root / "ignored.py").write_text(self.PLUGIN, encoding="utf-8")
             manager = E.PluginManager(root, allowlist=["clock"])
             self.assertEqual(set(manager.discover()), {"clock"})
-            self.assertEqual(manager.render("clock"), {"label": "Example clock", "icon": "clock"})
+            self.assertEqual(manager.render("clock"), {"label": "Example widget", "icon": "clock"})
             self.assertEqual(manager.click("clock"), {"action": "toast", "message": "Hello"})
             manager.tick(now=123.0)
             self.assertNotIn("ignored", manager.plugins)
@@ -142,6 +143,15 @@ PLUGIN = Example()
             self.assertIn("broken", manager.errors)
         with self.assertRaises(ValueError):
             E.PluginManager("/tmp", allowlist=["../unsafe"])
+
+    def test_stats_api_updates_usage_without_exposing_mutable_state(self):
+        stats = E.StatsAPI()
+        stats.record_open("firefox", when=12.5)
+        self.assertEqual(stats.usage_count("firefox"), 1)
+        self.assertEqual(stats.last_opened("firefox"), 12.5)
+        snapshot = stats.snapshot()
+        snapshot["usage"]["firefox"] = 999
+        self.assertEqual(stats.usage_count("firefox"), 1)
 
 
 if __name__ == "__main__":

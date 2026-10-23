@@ -75,6 +75,13 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(items[-1]["badge_count"], 999999)
         self.assertNotIn("badge_count", items[-2])
 
+    def test_user_theme_identifier_survives_validation(self):
+        cfg = C.default_config()
+        cfg["theme"] = "user:midnight-blue"
+        self.assertEqual(C.validate(cfg)["theme"], "user:midnight-blue")
+        cfg["theme"] = "user:../unsafe"
+        self.assertEqual(C.validate(cfg)["theme"], CUSTOM)
+
     def test_migration_v0(self):
         old = {"icon_size": 64, "edge": "left", "autohide": True, "pinned": ["firefox.desktop"]}
         v = C.validate(C.migrate(old))
