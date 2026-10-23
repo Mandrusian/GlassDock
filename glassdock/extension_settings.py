@@ -355,53 +355,230 @@ class PluginsPage(BasePage):
         GLib.idle_add(self.rebuild)
 
 
-class ExtensionPreferencesPage(Gtk.ScrolledWindow):
-    """The extension-related core settings, grouped with the extension tools."""
-    def __init__(self, store, shared_rows):
-        super().__init__()
-        self.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+PREFERENCE_GROUPS = (
+    ("Clock & Calendar", "Time format, seconds and the calendar's first day of the week.",
+     ("extensions.clock_format", "extensions.clock_show_seconds", "extensions.calendar_first_weekday"),
+     "x-office-calendar-symbolic"),
+    ("Music Controls", "Choose the MPRIS command, metadata refresh rate and hover behaviour.",
+     ("extensions.music_playerctl", "extensions.music_refresh_seconds", "extensions.music_controls_on_hover"),
+     "audio-x-generic-symbolic"),
+    ("Folder Menus", "Control hidden files, menu limits and the fan layout.",
+     ("extensions.folder_show_hidden", "extensions.folder_popup_limit", "extensions.folder_fan_radius", "extensions.folder_fan_angle"),
+     "folder-symbolic"),
+    ("Item Badges", "Choose whether badges appear and how large their labels may be.",
+     ("extensions.badges_enabled", "extensions.badge_max_count"),
+     "emblem-important-symbolic"),
+    ("Plugin Loading", "Set the plugin directory, allowed module names and trusted-code loading policy.",
+     ("extensions.plugins_enabled", "extensions.plugin_directory", "extensions.plugin_allowlist"),
+     "application-x-python-symbolic"),
+)
+
+
+class ExtensionSettingsDialog:
+    """A focused, modal editor for one group of extension defaults."""
+
+    @staticmethod
+    def open(parent, store, shared_rows, title, description, keys):
+        dialog = Gtk.Dialog(title=title, transient_for=parent, modal=True)
+        dialog.set_default_size(680, 560)
+        dialog.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+        dialog.add_button("Done", Gtk.ResponseType.CLOSE)
+
+        area = dialog.get_content_area()
+        area.set_spacing(12)
         for side in ("start", "end", "top", "bottom"):
-            getattr(box, "set_margin_" + side)(18)
-        box.pack_start(S.label("Extension defaults", "md-page-title"), False, False, 0)
-        box.pack_start(S.label(
-            "Defaults for clocks, music controls, folders, badges and trusted plugin loading.",
-            "md-page-sub", wrap=True), False, False, 0)
-        entries = [setting for setting in S.C.SCHEMA if setting.key.startswith("extensions.")]
+            getattr(area, "set_margin_" + side)(18)
+        area.pack_start(S.label(title, "md-page-title"), False, False, 0)
+        area.pack_start(S.label(description, "md-page-sub", wrap=True), False, False, 0)
+
+        entries = [setting for setting in S.C.SCHEMA if setting.key in keys]
         controls = S.settings_list()
+        rows = []
         for setting in entries:
             row = S.SettingRow(setting, store)
-            shared_rows.append(row)
+            rows.append(row)
+            if shared_rows is not None:
+                shared_rows.append(row)
             S.row_in_list(controls, row)
-        box.pack_start(S.card(controls), False, False, 0)
-        self.add(box)
+
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_min_content_height(300)
+        scroll.add(S.card(controls))
+        area.pack_start(scroll, True, True, 0)
+
+        try:
+            dialog.show_all()
+            dialog.run()
+        finally:
+            if shared_rows is not None:
+                for row in rows:
+                    if row in shared_rows:
+                        shared_rows.remove(row)
+            dialog.destroy()
 
 
 class ExtensionsPanel(Gtk.Box):
-    """Dedicated settings panel for dock widgets, folders, native icons and plugins."""
+    """A polished extension hub with dedicated managers and focused preference dialogs."""
+
     def __init__(self, settings_store=None, settings_rows=None):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=18)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(self, "set_margin_" + side)(22)
+        self.settings_store = settings_store
+        self.settings_rows = settings_rows
+        self.data = X.load()
+        self._summary_labels = {}
+
         self.pack_start(S.label("Extensions", "md-page-title"), False, False, 0)
         self.pack_start(S.label(
-            "Manage dock widgets, fan folders, native icon overrides and trusted Python plugins. "
-            "Plugin code is trusted code and is not sandboxed.",
+            "A dedicated workspace for dock widgets, folders, icons and Python plugins. "
+            "Tune each feature in its own focused settings popup.",
             "md-page-sub", wrap=True), False, False, 0)
+
+        trust = S.style(Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10), "md-card")
+        trust.set_margin_top(2)
+        trust_inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(trust_inner, "set_margin_" + side)(12)
+        trust_inner.pack_start(S.icon_image(("dialog-information-symbolic", "dialog-information"), Gtk.IconSize.BUTTON),
+                               False, False, 0)
+        trust_inner.pack_start(S.label(
+            "Security note: enabled Python plugins run as your user; they are not sandboxed. "
+            "Only enable code you trust.", "md-page-sub", wrap=True), True, True, 0)
+        trust.pack_start(trust_inner, True, True, 0)
+        self.pack_start(trust, False, False, 0)
+
+        self._add_section("MANAGE")
+        management = [
+            ("widgets", "view-grid-symbolic", "Dock widgets",
+             "Add and tune native clocks, calendars and music controls.",
+             "Manage widgets…", lambda: self._open_manager(WidgetsPage, "Manage dock widgets")),
+            ("folders", "folder-symbolic", "Fan folders",
+             "Organize apps, paths and per-item icons into radial folders.",
+             "Manage folders…", lambda: self._open_manager(FoldersPage, "Manage fan folders")),
+            ("icons", "applications-graphics-symbolic", "Native icons",
+             "Override the built-in Apps and Trash artwork with your own images.",
+             "Manage icons…", lambda: self._open_manager(IconsPage, "Manage native icons")),
+            ("plugins", "application-x-python-symbolic", "Python plugins",
+             "Review enabled modules, permissions and per-plugin configuration.",
+             "Manage plugins…", lambda: self._open_manager(PluginsPage, "Manage Python plugins")),
+        ]
+        grid = Gtk.Grid()
+        grid.set_column_spacing(14)
+        grid.set_row_spacing(14)
+        grid.set_column_homogeneous(True)
+        grid.set_hexpand(True)
+        for index, (key, glyph, title, description, action, callback) in enumerate(management):
+            card, summary = self._make_card(glyph, title, description, action, callback, "0 configured")
+            self._summary_labels[key] = summary
+            grid.attach(card, index % 2, index // 2, 1, 1)
+        self.pack_start(grid, False, False, 0)
+
+        if self.settings_store is not None:
+            self._add_section("FEATURE PREFERENCES")
+            preference_grid = Gtk.Grid()
+            preference_grid.set_column_spacing(14)
+            preference_grid.set_row_spacing(14)
+            preference_grid.set_column_homogeneous(True)
+            for index, (title, description, keys, glyph) in enumerate(PREFERENCE_GROUPS):
+                callback = lambda title=title, description=description, keys=keys: self._open_preferences(
+                    title, description, keys)
+                card, _summary = self._make_card(
+                    glyph, title, description, "Configure…", callback, None, height=140)
+                preference_grid.attach(card, index % 2, index // 2, 1, 1)
+            self.pack_start(preference_grid, False, False, 0)
+
+        self._refresh_summaries()
+
+    def _add_section(self, title):
+        heading = S.label(title, "md-group-title")
+        heading.set_margin_top(6)
+        self.pack_start(heading, False, False, 0)
+
+    @staticmethod
+    def _make_card(glyph, title, description, action_text, callback, summary_text=None, height=166):
+        outer = S.style(Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10), "md-card")
+        outer.set_hexpand(True)
+        outer.set_size_request(-1, height)
+        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(inner, "set_margin_" + side)(14)
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        header.set_valign(Gtk.Align.CENTER)
+        header.pack_start(S.icon_image((glyph, "applications-utilities-symbolic"), Gtk.IconSize.DIALOG),
+                          False, False, 0)
+        title_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=3)
+        title_box.pack_start(S.label(title, "md-row-title", wrap=True), False, False, 0)
+        title_box.pack_start(S.label(description, "md-row-help", wrap=True), False, False, 0)
+        header.pack_start(title_box, True, True, 0)
+        inner.pack_start(header, True, True, 0)
+
+        summary = None
+        if summary_text is not None:
+            summary = S.style(Gtk.Label(label=summary_text, xalign=0), "md-pill")
+            summary.set_halign(Gtk.Align.START)
+            inner.pack_start(summary, False, False, 0)
+
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        actions.set_halign(Gtk.Align.END)
+        button = S.text_button(action_text, lambda *_: callback(), suggested=True)
+        actions.pack_end(button, False, False, 0)
+        inner.pack_start(actions, False, False, 0)
+        outer.pack_start(inner, True, True, 0)
+        return outer, summary
+
+    def _open_manager(self, page_class, title):
+        parent = self.get_toplevel()
+        dialog = Gtk.Dialog(title=title, transient_for=parent, modal=True)
+        dialog.set_default_size(900, 700)
+        dialog.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+        dialog.add_button("Done", Gtk.ResponseType.CLOSE)
+        area = dialog.get_content_area()
+        area.set_spacing(8)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(area, "set_margin_" + side)(8)
+        page = page_class(self.data)
+        page.set_size_request(-1, 590)
+        area.pack_start(page, True, True, 0)
+        try:
+            dialog.show_all()
+            dialog.run()
+        finally:
+            dialog.destroy()
         self.data = X.load()
-        self.notebook = Gtk.Notebook()
-        self.notebook.set_scrollable(True)
-        self.pages = [WidgetsPage(self.data), FoldersPage(self.data), IconsPage(self.data), PluginsPage(self.data)]
-        labels = ("Widgets", "Folders", "Native icons", "Plugins")
-        for page, title in zip(self.pages, labels):
-            page.set_size_request(-1, 420)
-            self.notebook.append_page(page, Gtk.Label(label=title))
-        if settings_store is not None:
-            self.preferences_page = ExtensionPreferencesPage(
-                settings_store, settings_rows if settings_rows is not None else [])
-            self.notebook.append_page(self.preferences_page, Gtk.Label(label="Defaults"))
-        self.pack_start(self.notebook, True, True, 0)
+        self._refresh_summaries()
+
+    def _open_preferences(self, title, description, keys):
+        if self.settings_store is None:
+            return
+        ExtensionSettingsDialog.open(
+            self.get_toplevel(), self.settings_store, self.settings_rows,
+            title, description, keys)
+
+    def _summary_text(self):
+        extras = self.data.get("extras", [])
+        widgets = sum(1 for item in extras if item.get("type") in WIDGET_TYPES)
+        folders = sum(1 for item in extras if item.get("type") == "folder")
+        icons = len(self.data.get("icon_overrides", {}))
+        plugins = len(self.data.get("plugins", {}))
+        def describe(count, noun):
+            return "No %s configured" % noun if count == 0 else "%s %s%s configured" % (
+                count, noun, "" if count == 1 else "s")
+        return {
+            "widgets": describe(widgets, "widget"),
+            "folders": describe(folders, "folder"),
+            "icons": describe(icons, "icon override"),
+            "plugins": describe(plugins, "plugin"),
+        }
+
+    def _refresh_summaries(self):
+        for key, value in self._summary_text().items():
+            label = self._summary_labels.get(key)
+            if label is not None:
+                label.set_text(value)
 
     def refresh(self):
         self.data = X.load()
-        for page in self.pages:
-            page.data = self.data
-        self.pages[-1].rebuild()
+        self._refresh_summaries()

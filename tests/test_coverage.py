@@ -55,7 +55,11 @@ class CoverageTests(unittest.TestCase):
         self.assertIn('s.category == cat and not s.key.startswith("extensions.")', src)
         self.assertNotIn('cat == "behavior" and s.key.startswith("extensions.")', src)
         extension_src = read("glassdock/extension_settings.py")
-        self.assertIn('Gtk.Label(label="Defaults")', extension_src)
+        self.assertIn("class ExtensionSettingsDialog", extension_src)
+        self.assertIn("PREFERENCE_GROUPS = (", extension_src)
+        self.assertIn('"Clock & Calendar"', extension_src)
+        self.assertIn('"Music Controls"', extension_src)
+        self.assertNotIn("class ExtensionPreferencesPage", extension_src)
 
     def test_settings_app_builds_pages_from_schema(self):
         src = read("glassdock/settings.py")

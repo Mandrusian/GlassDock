@@ -184,10 +184,28 @@ class PackagingIntegrationTests(unittest.TestCase):
         self.assertIn('self.add_page("extensions", "Extensions", self.extensions_panel)', settings_source)
         self.assertIn("ExtensionsPanel(self.store, self.rows)", settings_source)
         self.assertNotIn("Advanced widgets, fan folders, icon overrides and plugins", settings_source)
-        self.assertIn('labels = ("Widgets", "Folders", "Native icons", "Plugins")', extension_source)
-        self.assertIn('Gtk.Label(label="Defaults")', extension_source)
-        self.assertIn("ExtensionPreferencesPage", extension_source)
+        self.assertIn("class ExtensionSettingsDialog", extension_source)
+        self.assertIn("PREFERENCE_GROUPS = (", extension_source)
+        self.assertNotIn('Gtk.Label(label="Defaults")', extension_source)
+        self.assertNotIn("class ExtensionPreferencesPage", extension_source)
+        self.assertNotIn("self.notebook = Gtk.Notebook()", extension_source)
+        self.assertIn("self._open_preferences", extension_source)
         self.assertNotIn('groups.append((extension_settings, "Widgets & Extensions"))', settings_source)
+
+    def test_feature_preferences_open_focused_popups(self):
+        source = (self.ROOT / "glassdock" / "extension_settings.py").read_text(encoding="utf-8")
+        for setting in (
+            "extensions.clock_format", "extensions.clock_show_seconds",
+            "extensions.calendar_first_weekday", "extensions.music_playerctl",
+            "extensions.music_refresh_seconds", "extensions.folder_show_hidden",
+            "extensions.folder_popup_limit", "extensions.folder_fan_radius",
+            "extensions.folder_fan_angle", "extensions.badges_enabled",
+            "extensions.badge_max_count", "extensions.plugins_enabled",
+            "extensions.plugin_directory", "extensions.plugin_allowlist",
+        ):
+            self.assertIn(setting, source)
+        for label in ("Clock & Calendar", "Music Controls", "Folder Menus", "Item Badges", "Plugin Loading"):
+            self.assertIn(label, source)
 
 
 if __name__ == "__main__":
