@@ -355,18 +355,49 @@ class PluginsPage(BasePage):
         GLib.idle_add(self.rebuild)
 
 
+class ExtensionPreferencesPage(Gtk.ScrolledWindow):
+    """The extension-related core settings, grouped with the extension tools."""
+    def __init__(self, store, shared_rows):
+        super().__init__()
+        self.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(box, "set_margin_" + side)(18)
+        box.pack_start(S.label("Extension defaults", "md-page-title"), False, False, 0)
+        box.pack_start(S.label(
+            "Defaults for clocks, music controls, folders, badges and trusted plugin loading.",
+            "md-page-sub", wrap=True), False, False, 0)
+        entries = [setting for setting in S.C.SCHEMA if setting.key.startswith("extensions.")]
+        controls = S.settings_list()
+        for setting in entries:
+            row = S.SettingRow(setting, store)
+            shared_rows.append(row)
+            S.row_in_list(controls, row)
+        box.pack_start(S.card(controls), False, False, 0)
+        self.add(box)
+
+
 class ExtensionsPanel(Gtk.Box):
-    """Advanced extension controls shown as tabs inside the normal Launchers page."""
-    def __init__(self):
-        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+    """Dedicated settings panel for dock widgets, folders, native icons and plugins."""
+    def __init__(self, settings_store=None, settings_rows=None):
+        super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.pack_start(S.label("Extensions", "md-page-title"), False, False, 0)
+        self.pack_start(S.label(
+            "Manage dock widgets, fan folders, native icon overrides and trusted Python plugins. "
+            "Plugin code is trusted code and is not sandboxed.",
+            "md-page-sub", wrap=True), False, False, 0)
         self.data = X.load()
         self.notebook = Gtk.Notebook()
         self.notebook.set_scrollable(True)
         self.pages = [WidgetsPage(self.data), FoldersPage(self.data), IconsPage(self.data), PluginsPage(self.data)]
         labels = ("Widgets", "Folders", "Native icons", "Plugins")
         for page, title in zip(self.pages, labels):
-            page.set_size_request(-1, 340)
+            page.set_size_request(-1, 420)
             self.notebook.append_page(page, Gtk.Label(label=title))
+        if settings_store is not None:
+            self.preferences_page = ExtensionPreferencesPage(
+                settings_store, settings_rows if settings_rows is not None else [])
+            self.notebook.append_page(self.preferences_page, Gtk.Label(label="Defaults"))
         self.pack_start(self.notebook, True, True, 0)
 
     def refresh(self):
