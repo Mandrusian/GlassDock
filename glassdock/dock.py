@@ -1119,6 +1119,9 @@ class DockApp:
         self.control = None
         self.listener = None
         self.last_self_write = 0.0
+        self.music_controller = None
+        self.plugin_manager = None
+        self.extension_tick_id = None
 
     # ------------------------------------------------------------ lifecycle
     def run(self):
@@ -1149,8 +1152,10 @@ class DockApp:
         self.icons = IconCache()
         self.entries = load_entries()
         self.cfg = C.load_config(entries=self.entries)
+        self.configure_extensions()
         if not os.path.exists(C.config_path()):
             C.save_config(self.cfg)
+        self.extension_tick_id = GLib.timeout_add(1000, self.refresh_extensions)
 
         try:
             self.ipc = sway.SwayIPC()
@@ -1181,6 +1186,9 @@ class DockApp:
             self.listener.stop()
         if self.control:
             self.control.stop()
+        if self.extension_tick_id is not None:
+            GLib.source_remove(self.extension_tick_id)
+            self.extension_tick_id = None
 
     # --------------------------------------------------------------- sway state
     def on_sway_event(self, name, payload):
@@ -1240,6 +1248,7 @@ class DockApp:
         g = getter(self.cfg)
         self.items = M.build_items(self.cfg["items"], self.entries, self.windows,
                                    g("behavior.show_running_unpinned"))
+        self.refresh_extensions()
         outs = self.outputs or self.fallback_outputs()
         wanted = {o["name"]: o for o in outs if C.monitor_enabled(self.cfg, o["name"])}
         for name in list(self.docks):
@@ -1276,6 +1285,7 @@ class DockApp:
     def reload_config(self):
         self.entries = load_entries()
         self.cfg = C.load_config(entries=self.entries)
+        self.configure_extensions()
         self.blur_applied = None
         self.rebuild()
         return False
@@ -1356,6 +1366,35 @@ class DockApp:
     def activate(self, item, new_instance=False, dock=None):
         if item.kind == "separator":
             return
+        if item.kind == "folder":
+            if dock is not None:
+                dock.show_folder_menu(item)
+            else:
+                spawn(["xdg-open", item.path])
+            return
+        if item.kind == "widget":
+            if item.extension == "music":
+                self.music_action("play-pause")
+            elif item.extension in ("clock", "calendar") and dock is not None:
+                dock.show_calendar_menu(item)
+            return
+        if item.kind == "plugin":
+            result = self.plugin_manager.click(item.extension, {"key": item.key, "name": item.name}) if self.plugin_manager else None
+            if isinstance(result, dict) and result.get("action") == "open_url":
+                url = result.get("url")
+                if isinstance(url, str) and url.startswith(("https://", "http://")):
+                    Gio.AppInfo.launch_default_for_uri(url, None)
+                    return
+            if isinstance(result, dict) and result.get("action") == "open_path":
+                path = result.get("path")
+                if isinstance(path, str) and path and "\\x00" not in path:
+                    spawn(["xdg-open", os.path.expanduser(path)])
+                    return
+            if isinstance(result, dict) and result.get("action") == "toast":
+                toast(str(result.get("message", ""))[:200])
+            elif result is not None:
+                toast(str(result)[:200])
+            return
         if item.kind == "special":
             if item.special == "apps":
                 try:
@@ -1418,6 +1457,91 @@ class DockApp:
         self.last_self_write = time.monotonic()
         C.save_config(self.cfg)
         self.rebuild()
+
+    def configure_extensions(self):
+        g = getter(self.cfg)
+        playerctl = g("extensions.music_playerctl").strip() or "playerctl"
+        self.music_controller = E.MusicController(playerctl)
+        directory = g("extensions.plugin_directory").strip()
+        if not directory:
+            directory = os.path.join(C.config_dir(), "plugins")
+        allowlist = [part.strip() for part in g("extensions.plugin_allowlist").split(",") if part.strip()]
+        if g("extensions.plugins_enabled"):
+            try:
+                self.plugin_manager = E.PluginManager(directory, allowlist)
+                self.plugin_manager.discover()
+                for name, error in self.plugin_manager.errors.items():
+                    log("plugin %s not loaded: %s" % (name, error.splitlines()[-1]))
+            except (OSError, ValueError) as exc:
+                log("plugin manager unavailable: %s" % exc)
+                self.plugin_manager = None
+        else:
+            self.plugin_manager = None
+
+    def refresh_extensions(self):
+        if not self.cfg:
+            return True
+        g = getter(self.cfg)
+        now = time.monotonic()
+        clock = E.clock_text(fmt=g("extensions.clock_format"),
+                             show_seconds=g("extensions.clock_show_seconds"))
+        if self.music_controller is not None:
+            music = self.music_controller.refresh(
+                now=now, interval=g("extensions.music_refresh_seconds"))
+        else:
+            music = {"title": "Nothing playing", "status": "Stopped"}
+        for item in self.items:
+            old = (item.name, item.icon, item.extension_text)
+            if item.kind == "widget":
+                if item.extension == "clock":
+                    item.extension_text = clock
+                elif item.extension == "calendar":
+                    item.extension_text = "Open calendar"
+                elif item.extension == "music":
+                    item.extension_text = (
+                        "Music stopped" if music.get("title") == "Nothing playing"
+                        else music.get("title", "Music")
+                    )
+                    if g("extensions.music_controls_on_hover"):
+                        item.extension_text += " · Right-click for controls"
+            elif item.kind == "plugin" and self.plugin_manager is not None:
+                rendered = self.plugin_manager.render(item.extension)
+                item.name, item.icon = rendered["label"] or item.extension, rendered["icon"]
+            if old != (item.name, item.icon, item.extension_text):
+                for dock in self.docks.values():
+                    dock.queue_draw()
+        if self.plugin_manager is not None:
+            self.plugin_manager.tick(now=time.time())
+        return True
+
+    def music_action(self, action):
+        if self.music_controller is None or not self.music_controller.command(action):
+            toast("Music control failed. Check playerctl and your media player.")
+        else:
+            self.refresh_extensions()
+
+    def edit_badge(self, item):
+        idx = item.cfg_index
+        if not 0 <= idx < len(self.cfg.get("items", [])):
+            return
+        maximum = getter(self.cfg)("extensions.badge_max_count")
+        parent = next(iter(self.docks.values()), None)
+        dialog = Gtk.Dialog(title="Set badge count", parent=parent, flags=Gtk.DialogFlags.MODAL)
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Apply", Gtk.ResponseType.OK)
+        spin = Gtk.SpinButton.new_with_range(0, 999999, 1)
+        spin.set_value(item.badge_count)
+        box = dialog.get_content_area()
+        box.set_spacing(8)
+        box.pack_start(Gtk.Label(label="Badge count (0 hides the badge):", xalign=0), False, False, 4)
+        box.pack_start(spin, False, False, 4)
+        dialog.show_all()
+        response = dialog.run()
+        count = int(spin.get_value())
+        dialog.destroy()
+        if response == Gtk.ResponseType.OK:
+            self.cfg["items"][idx]["badge_count"] = min(maximum, count)
+            self.save_cfg()
 
     def pin(self, item):
         if item.entry is not None:
