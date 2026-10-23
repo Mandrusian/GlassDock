@@ -211,6 +211,17 @@ class GeometryTests(unittest.TestCase):
                 self.assertLessEqual(fitted.win_main, 540)
                 self.assertGreater(fitted.icon, 0)
 
+    def test_extra_long_mixed_dock_is_fitted_on_every_edge(self):
+        kinds = ["separator" if i % 9 == 0 else ("widget" if i % 3 == 0 else "app")
+                 for i in range(64)]
+        for edge in ("bottom", "top", "left", "right"):
+            with self.subTest(edge=edge):
+                fitted = self.geo(kinds=kinds, icon=128, edge=edge, max_main=720)
+                self.assertLessEqual(fitted.win_main, 720)
+                self.assertLessEqual(fitted.max_len + 2 * fitted.shadow, 720)
+                self.assertEqual(fitted.n_kinds, len(kinds))
+                self.assertGreater(fitted.icon, 0)
+
     def test_exclusive_zone(self):
         g = self.geo()
         self.assertEqual(M.exclusive_zone(g, True, "off"), int(g.c0 + g.thick))

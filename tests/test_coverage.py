@@ -53,6 +53,14 @@ class CoverageTests(unittest.TestCase):
         self.assertIn("show_advanced_settings", src)
         self.assertIn("Advanced options…", src)
 
+    def test_dock_renderer_fits_when_the_actual_surface_is_smaller(self):
+        src = read("glassdock/dock.py")
+        self.assertIn("def fit_to_allocation(self, width, height):", src)
+        self.assertIn("self.fit_to_allocation(W, H)", src)
+        self.assertIn("widget.get_allocated_width()", src)
+        self.assertIn("widget.get_allocated_height()", src)
+        self.assertIn("fitted.win_main = main_extent", src)
+
     def test_settings_pages_cover_all_categories(self):
         cats = {c for c, _ in C.CATEGORIES}
         for s in C.SCHEMA:

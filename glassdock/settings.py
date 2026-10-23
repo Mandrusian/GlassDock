@@ -72,9 +72,11 @@ PAGE_ICONS = {
 ADVANCED_SETTING_KEYS = {
     "style": (
         "appearance.bg_color2", "appearance.gradient_direction", "appearance.border_opacity",
+        "appearance.border_width", "appearance.corner_radius", "appearance.icon_radius",
         "appearance.shadow_size", "appearance.shadow_opacity", "appearance.label_bg",
         "appearance.label_color",
     ),
+    "size": ("size.spacing", "size.padding", "size.margin"),
     "animation": (
         "animation.magnify_factor", "animation.magnify_range", "animation.easing",
     ),

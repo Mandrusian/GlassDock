@@ -428,6 +428,52 @@ class DockWindow(Gtk.Window):
         self.ensure_tick()
         self.queue_draw()
 
+    def fit_to_allocation(self, width, height):
+        """Recover if the compositor allocates a smaller layer surface than requested.
+
+        Some wlroots compositors cap layer-surface dimensions. Keep the requested
+        geometry for normal operation, but if the actual DrawingArea is smaller,
+        recompute a fitted geometry before painting so the panel and icons stay
+        inside the pixels that can really be drawn.
+        """
+        geo, g = self.geo, self.g
+        if geo is None or g is None:
+            return False
+        main_extent = int(width if M.is_horizontal(geo.edge) else height)
+        minimum = max(48, 2 * int(geo.shadow) + 3)
+        if main_extent < minimum or main_extent >= geo.win_main - 1:
+            return False
+
+        margin = max(0, int(g("size.margin")))
+        budget = max(1, main_extent - 2 * min(margin, max(0, main_extent // 4)))
+        fitted = M.compute_geometry(
+            [item.kind for item in self.items],
+            icon=g("size.icon_size"), spacing=g("size.spacing"), padding=g("size.padding"),
+            margin=g("size.margin"),
+            shadow_size=g("appearance.shadow_size") if g("appearance.shadow") else 0,
+            edge=g("position.edge"), alignment=g("position.alignment"),
+            indicator_size=g("indicators.size"), indicator_style=g("indicators.style"),
+            magnify=g("animation.magnify"), factor=g("animation.magnify_factor"),
+            reach=g("animation.magnify_range"), bounce=g("animation.launch_bounce"),
+            labels=g("appearance.show_labels"), max_main=budget,
+        )
+        if fitted.win_main > budget:
+            log("Layer surface is smaller than requested and cannot fit all dock items safely.")
+            return False
+
+        # The real allocation is the coordinate space used by Cairo and input
+        # regions, so align the fitted contents against that—not the old request.
+        fitted.win_main = main_extent
+        self.geo = fitted
+        L = GtkLayerShell
+        L.set_exclusive_zone(
+            self, M.exclusive_zone(fitted, g("behavior.exclusive_zone"), g("behavior.autohide")))
+        self.update_targets()
+        self.update_region(force=True)
+        log("Fitted dock geometry to allocated main axis (%d px; requested %d px)." %
+            (main_extent, geo.win_main))
+        return True
+
     # ------------------------------------------------------------- visibility
     def compute_want(self):
         g = self.g
@@ -624,6 +670,8 @@ class DockWindow(Gtk.Window):
             return False
         g, geo = self.g, self.geo
         W, H = widget.get_allocated_width(), widget.get_allocated_height()
+        if self.fit_to_allocation(W, H):
+            g, geo = self.g, self.geo
         cr.set_operator(cairo.OPERATOR_SOURCE)
         cr.set_source_rgba(0, 0, 0, 0)
         cr.paint()
