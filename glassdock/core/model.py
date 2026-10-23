@@ -18,12 +18,16 @@ import shlex
 @dataclass
 class DockItem:
     key: str
-    kind: str                      # app | launcher | special | separator
+    kind: str                      # app | launcher | special | separator | folder | widget | plugin
     name: str = ""
     icon: str = ""
     entry: object = None           # DesktopEntry or None
     argv: list = None              # for custom launchers
     special: str = ""              # "apps" | "trash"
+    extension: str = ""            # clock | calendar | music | plugin module name
+    path: str = ""                 # folder path
+    badge_count: int = 0
+    extension_text: str = ""       # dynamic hover label
     pinned: bool = True
     windows: list = field(default_factory=list)
     cfg_index: int = -1            # index into config items (pinned items only)
@@ -126,6 +130,27 @@ def build_items(cfg_items, entries, windows, show_unpinned=True):
             items.append(DockItem(key="launcher:%d" % idx, kind="launcher", name=spec["name"],
                                   icon=spec.get("icon", ""), argv=argv, cfg_index=idx))
             idents.append(_launcher_identifiers(spec))
+        elif t == "folder":
+            path = spec.get("path", "")
+            items.append(DockItem(key="folder:%d" % idx, kind="folder",
+                                  name=spec.get("name") or os.path.basename(path) or path,
+                                  icon=spec.get("icon", "folder"), path=path,
+                                  badge_count=spec.get("badge_count", 0), cfg_index=idx))
+            idents.append(None)
+        elif t == "widget":
+            kind = spec.get("kind", "")
+            names = {"clock": "Clock", "calendar": "Calendar", "music": "Music"}
+            icons = {"clock": "clock", "calendar": "x-office-calendar", "music": "audio-x-generic"}
+            if kind in names:
+                items.append(DockItem(key="widget:" + kind, kind="widget", name=names[kind],
+                                      icon=icons[kind], extension=kind,
+                                      badge_count=spec.get("badge_count", 0), cfg_index=idx))
+                idents.append(None)
+        elif t == "plugin":
+            name = spec.get("name", "")
+            items.append(DockItem(key="plugin:" + name, kind="plugin", name=name,
+                                  extension=name, badge_count=spec.get("badge_count", 0), cfg_index=idx))
+            idents.append(None)
 
     unclaimed = []
     for win in windows:
