@@ -1,6 +1,6 @@
 <h1 align="center"><img src="assets/glassdock.svg" alt="GlassDock app icon" width="56" align="middle" />&nbsp;GlassDock</h1>
 
-<p align="center">A dock for Wayland desktops.</p>
+<p align="center">A dock for Wayland desktops, with a separate experimental X11 backend for i3.</p>
 
 <p align="center"><code>curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/master/installer.sh | bash</code></p>
 
@@ -36,6 +36,17 @@ glassdock-settings
 glassdock-ctl status
 ```
 
+## X11 / i3 (experimental)
+
+For i3 and other X11 sessions, use the standalone backend in [`x11-support/`](x11-support/README.md). It does not require GTK introspection or gtk-layer-shell:
+
+```bash
+python -m pip install --user python-xlib
+python x11-support/glassdock-x11.py
+```
+
+This is a separate starter backend with configurable text launchers and EWMH dock placement; it is not yet a full feature-for-feature port of the Wayland dock.
+
 ## Manual installation
 
 ```bash
@@ -47,6 +58,7 @@ cd GlassDock
 
 ## Other links
 
+- [X11 / i3 support](x11-support/README.md) — standalone experimental X11 backend.
 - [Advanced README](README-advanced.md) — setup, controls, configuration, autostart, updates, uninstalling, and troubleshooting.
 - [GlassIcon Studio](extras/GlassIcon/README.md) — companion icon tool.
 - [License](LICENSE)
