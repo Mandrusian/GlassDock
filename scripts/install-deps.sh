@@ -9,9 +9,14 @@ if [ -n "${TERMUX_VERSION:-}" ] || [ "${PREFIX:-}" = "/data/data/com.termux/file
         echo "Android detected, but Termux pkg is unavailable. Run this script inside the Termux app." >&2
         exit 1
     fi
-    REQUIRED=(python python-gobject python-cairo gtk3 gtk-layer-shell)
+    # Package names differ from Debian/Ubuntu. PyGObject's Termux package is
+    # "python-gobject" only in some third-party repos; current main repos use
+    # "pygobject" and "pycairo". Enable x11-repo for GTK/layer-shell packages.
     echo "==> Android/Termux detected; installing dependencies with pkg (no sudo)"
     pkg update
+    pkg install -y x11-repo
+    pkg update
+    REQUIRED=(python pygobject pycairo gobject-introspection gtk3 gtk-layer-shell)
     pkg install -y "${REQUIRED[@]}"
     echo "==> Dependencies installed. GlassDock still needs a compatible Wayland compositor/session."
     exit 0
