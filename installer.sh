@@ -174,7 +174,7 @@ fi
 CK_STATE=missing; CK_BRANCH=""; CK_HEAD=""; CK_DIRTY=0
 dirty_lines() {
   # Ignore Python bytecode: it is regenerated and never worth stopping for.
-  git -C "$DEST" status --porcelain 2>/dev/null | grep -Ev '__pycache__/?$|\.py[co]$' || true
+  git -C "$DEST" status --porcelain -uall 2>/dev/null | grep -Ev '(^|/)__pycache__/|\.py[co]$' || true
 }
 ck_info() {
   local top origin
@@ -348,17 +348,21 @@ update_checkout() {
       case "$PICK" in 0) ;; 1) SKIP_UPDATE=1; return 0;; *) die "Cancelled. Nothing was changed.";; esac
     else info "Non-interactive: switching to $BRANCH (your branch '$cur' is kept)."; fi
   fi
+  # Count unpushed local commits using the last known origin/$BRANCH, *before* fetching:
+  # a shallow fetch rewrites the boundary and would make old commits look local.
+  ahead=0
+  if git -C "$DEST" rev-parse -q --verify "refs/heads/$BRANCH" >/dev/null 2>&1 &&
+     git -C "$DEST" rev-parse -q --verify "origin/$BRANCH" >/dev/null 2>&1; then
+    ahead="$(git -C "$DEST" rev-list --count "origin/$BRANCH..refs/heads/$BRANCH" 2>/dev/null || echo 0)"
+  fi
   info "Checking GitHub for updates…"
   if [ "$(git -C "$DEST" rev-parse --is-shallow-repository 2>/dev/null)" = true ]; then
     run git -C "$DEST" fetch --depth 1 -q origin "$BRANCH"
   else run git -C "$DEST" fetch -q origin "$BRANCH"; fi
   sha="$(git -C "$DEST" rev-parse FETCH_HEAD 2>/dev/null || true)"
-  [ -n "$sha" ] || { [ "$DRY" = 1 ] && return 0; die "Could not read $BRANCH from GitHub."; }
-  # Commits made locally that were never pushed: don't silently drop them.
-  ahead=0
-  if git -C "$DEST" rev-parse -q --verify "refs/heads/$BRANCH" >/dev/null 2>&1 &&
-     git -C "$DEST" rev-parse -q --verify "origin/$BRANCH" >/dev/null 2>&1; then
-    ahead="$(git -C "$DEST" rev-list --count "origin/$BRANCH..refs/heads/$BRANCH" 2>/dev/null || echo 0)"
+  if [ -z "$sha" ]; then
+    [ "$DRY" = 1 ] && return 0
+    die "Could not read $BRANCH from GitHub."
   fi
   if [ "$ahead" -gt 0 ]; then
     warn "You have $ahead local commit(s) on $BRANCH that are not on GitHub."
@@ -412,11 +416,13 @@ maybe_install_deps() {
   elif deps_missing; then
     step "Dependencies"
     warn "Some required packages are missing (see the checklist above)."
-    if confirm "Install them now with scripts/install-deps.sh? (asks for your sudo password)" y; then want=1; fi
+    if interactive; then
+      if confirm "Install them now with scripts/install-deps.sh? (asks for your sudo password)" y; then want=1; fi
+    else note "Not installing them unattended. Re-run with --deps (or GLASSDOCK_INSTALL_DEPS=y) to allow sudo."; fi
   fi
   if [ "$want" = 1 ]; then
-    [ -x "$DEST/scripts/install-deps.sh" ] || die "$DEST/scripts/install-deps.sh not found."
-    run "$DEST/scripts/install-deps.sh"
+    if [ -x "$DEST/scripts/install-deps.sh" ]; then run "$DEST/scripts/install-deps.sh"
+    else warn "$DEST/scripts/install-deps.sh not found; install the packages from the checklist manually."; fi
   elif deps_missing; then
     warn "Continuing without them; install.sh will tell you exactly what is missing."
   fi
@@ -536,6 +542,7 @@ uninstall_dock() {
     target="$BIN/$name"
     if [ -L "$target" ]; then
       resolved="$(readlink -f "$target" 2>/dev/null || true)"
+      [ -n "$resolved" ] || resolved="$(readlink "$target" 2>/dev/null || true)"   # dangling link
       case "$resolved" in *GlassDock*|*ModernDock*|*glassdock*|*moderndock*) run rm -f -- "$target"; ok "Removed $target";; esac
     fi
   done
