@@ -27,4 +27,4 @@ if [ -z "${GLASSDOCK_NO_PRELOAD:-}" ]; then
         export LD_PRELOAD="$lib${LD_PRELOAD:+:$LD_PRELOAD}"
     fi
 fi
-exec python3 -m glassdock.dock "$@"
+exec python3 -m glassdock.dock_extensions "$@"

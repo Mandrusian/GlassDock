@@ -1,7 +1,7 @@
 """Example GlassDock plugin: a digital clock item.
 
 Copy into ~/.config/glassdock/plugins/ and allowlist ``clock`` under
-Settings → Widgets & Extensions before adding the plugin item.
+Settings → Behavior → Widgets & Extensions before adding the plugin item.
 """
 from datetime import datetime
 

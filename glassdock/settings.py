@@ -49,8 +49,7 @@ CATEGORY_BLURBS = {
     "animation": "Magnification, motion and timing.",
     "indicators": "How running and focused apps are marked.",
     "position": "Which edge the dock lives on.",
-    "behavior": "Auto-hide, stacking and commands.",
-    "extensions": "Clock, calendar, music controls, folders, badges, and trusted plugins.",
+    "behavior": "Auto-hide, stacking, commands and built-in dock extensions.",
 }
 
 # page name -> (sidebar icon fallbacks)
@@ -62,7 +61,6 @@ PAGE_ICONS = {
     "indicators": ("media-record-symbolic", "emblem-ok-symbolic"),
     "position": ("go-bottom-symbolic", "view-pin-symbolic"),
     "behavior": ("preferences-system-symbolic", "emblem-system-symbolic"),
-    "extensions": ("application-x-addon-symbolic", "preferences-system-symbolic"),
     "launchers": ("view-app-grid-symbolic", "view-list-symbolic"),
     "monitors": ("video-display-symbolic", "computer-symbolic"),
     "status": ("utilities-system-monitor-symbolic", "dialog-information-symbolic"),
@@ -1357,6 +1355,21 @@ class LaunchersPage(Gtk.Box):
             bar.pack_start(b, False, False, 0)
         bar.pack_end(text_button("Reset to defaults", self.reset), False, False, 0)
         self.pack_start(bar, False, False, 0)
+
+        # Keep extension management inside the existing Launchers page rather
+        # than creating new top-level navigation pages.
+        from .extension_settings import ExtensionsPanel
+        self.extensions_panel = ExtensionsPanel()
+        expander = Gtk.Expander(label="Advanced widgets, fan folders, icon overrides and plugins")
+        expander.set_expanded(False)
+        expander_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        expander_box.pack_start(label(
+            "Extra clock styles, MPRIS controls, fan folders, icon overrides and Python plugins. "
+            "Plugin code is trusted code and is not sandboxed.", "md-page-sub", wrap=True), False, False, 0)
+        expander_box.pack_start(self.extensions_panel, True, True, 0)
+        expander.add(expander_box)
+        self.pack_start(expander, False, False, 0)
+
         store.listen_external(self.load)
         self.load()
         self.update_buttons()
@@ -1515,14 +1528,33 @@ class LaunchersPage(Gtk.Box):
         dialog.destroy()
         if response != Gtk.ResponseType.OK or not name:
             return
+        if any(spec.get("type") == "plugin" and spec.get("name") == name for spec in self.current_items()):
+            message(self.window, "That plugin is already in the dock.")
+            return
+
+        # The newer Cairo plugin API is optional and coexists with the original
+        # JSON-rendered plugin format. Execute only the module the user just
+        # approved; discovery never imports every disabled module in a folder.
+        from . import extras_store as ExtrasStore, plugin_api as ExtraPluginAPI
+        extra_classes, _extra_errors = ExtraPluginAPI.discover([plugin_directory], allowlist=[name])
+        if name in extra_classes:
+            data = ExtrasStore.load()
+            conf = data["plugins"].setdefault(name, {"enabled": False, "config": {}})
+            conf["enabled"] = True
+            existing_config = conf.get("config", {}) if isinstance(conf.get("config"), dict) else {}
+            defaults = {key: spec.get("default") for key, spec in extra_classes[name].CONFIG.items()}
+            defaults.update({key: value for key, value in existing_config.items() if key in defaults})
+            conf["config"] = defaults
+            ExtrasStore.save(data)
+            self.append({"type": "plugin", "name": name})
+            self.extensions_panel.refresh()
+            return
+
         existing = [part.strip() for part in self.store.get("extensions.plugin_allowlist").split(",") if part.strip()]
         if name not in existing:
             existing.append(name)
         self.store.set("extensions.plugin_allowlist", ", ".join(existing))
         self.store.set("extensions.plugins_enabled", True)
-        if any(spec.get("type") == "plugin" and spec.get("name") == name for spec in self.current_items()):
-            message(self.window, "That plugin is already in the dock.")
-            return
         self.append({"type": "plugin", "name": name})
 
     def edit_row(self, tree, path, col):
@@ -1895,7 +1927,7 @@ class SettingsWindow(Gtk.Window):
                 self.add_page(cat, text, self.category_page(cat, text))
         self.add_section("Dock")
         for cat, text in C.CATEGORIES:
-            if cat in ("position", "behavior", "extensions"):
+            if cat in ("position", "behavior"):
                 self.add_page(cat, text, self.category_page(cat, text))
         self.launchers = LaunchersPage(self.store, self)
         self.add_page("launchers", "Launchers", self.launchers)
@@ -1996,13 +2028,29 @@ class SettingsWindow(Gtk.Window):
     def category_page(self, cat, text):
         box = page_box()
         box.pack_start(heading(text, CATEGORY_BLURBS.get(cat)), False, False, 0)
-        lb = settings_list()
-        for s in C.SCHEMA:
-            if s.category == cat:
-                row = SettingRow(s, self.store)
+
+        regular = [s for s in C.SCHEMA
+                   if s.category == cat and not s.key.startswith("extensions.")]
+        extension_settings = [s for s in C.SCHEMA
+                              if cat == "behavior" and s.key.startswith("extensions.")]
+        groups = [(regular, None)]
+        if extension_settings:
+            groups.append((extension_settings, "Widgets & Extensions"))
+
+        for entries, title in groups:
+            if not entries:
+                continue
+            if title:
+                box.pack_start(group_title(title), False, False, 0)
+                box.pack_start(label(
+                    "Clock, calendar, music, folders, badges and trusted plugin preferences.",
+                    "md-page-sub", wrap=True), False, False, 8)
+            lb = settings_list()
+            for setting in entries:
+                row = SettingRow(setting, self.store)
                 self.rows.append(row)
                 row_in_list(lb, row)
-        box.pack_start(card(lb), False, False, 0)
+            box.pack_start(card(lb), False, False, 0)
         return box
 
     def on_select(self, lb, row):

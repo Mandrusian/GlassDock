@@ -42,6 +42,16 @@ class CoverageTests(unittest.TestCase):
         for c in cats:
             self.assertTrue(any(s.category == c for s in C.SCHEMA), "empty category " + c)
 
+    def test_extensions_use_existing_behavior_page_not_new_sidebar_page(self):
+        categories = dict(C.CATEGORIES)
+        self.assertNotIn("extensions", categories)
+        extension_settings = [s for s in C.SCHEMA if s.key.startswith("extensions.")]
+        self.assertTrue(extension_settings)
+        self.assertTrue(all(s.category == "behavior" for s in extension_settings))
+        src = read("glassdock/settings.py")
+        self.assertIn('if cat in ("position", "behavior"):', src)
+        self.assertIn('cat == "behavior" and s.key.startswith("extensions.")', src)
+
     def test_settings_app_builds_pages_from_schema(self):
         src = read("glassdock/settings.py")
         self.assertIn("for s in C.SCHEMA:", src)

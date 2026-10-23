@@ -38,9 +38,9 @@ glassdock-ctl status
 
 ## Built-in widgets and extensions
 
-The normal dock and attached Settings app support clock, calendar, music-control, folder, badge, and trusted Python-plugin items. Add them from **Settings → Launchers → Add other**; they live in the main dock configuration, not a separate prototype directory. Extension preferences are in **Settings → Widgets & Extensions**.
+The normal dock supports clock, calendar, music controls, fan folders, notification/progress badges, icon overrides, and trusted Python plugins. Add regular dock items from **Settings → Launchers → Add other**. Advanced widgets, fan-folder configuration, native icon overrides, and plugin management are inside the collapsed **Advanced widgets, fan folders, icon overrides and plugins** expander at the bottom of the existing Launchers page—not in a separate sidebar page. Basic extension preferences are grouped within **Settings → Behavior**.
 
-Music actions use `playerctl` with an MPRIS-compatible player. User plugins are deliberately allowlisted and run as your user; they are not sandboxed. See the [advanced guide](README-advanced.md#widgets-and-extensions) before enabling plugin code.
+Music metadata calls run asynchronously and use MPRIS-compatible players. User plugins require explicit approval and execute with your account permissions; they are not sandboxed. Review the [advanced guide](README-advanced.md#widgets-and-extensions) before enabling any plugin.
 
 ## Manual installation
 

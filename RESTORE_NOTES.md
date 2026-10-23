@@ -1,22 +1,19 @@
-# GlassDock settings restoration review
+# GlassDock finalization notes
 
-This source snapshot restores the attached GTK settings app as the primary UI while retaining extension features inside the normal app.
+The advanced widget/folder/icon/plugin code from the uploaded test pack has been promoted into the normal `glassdock` package. No `*_test.py` runtime modules or separate experimental UI are required at runtime.
 
-## Kept in the default application
+## Integration
 
-- Clock and calendar dock items.
-- Music controls through `playerctl` and an MPRIS-compatible player, with media commands running outside the GTK event loop.
-- Folder items, hidden-file visibility, a folder fan, and a folder context menu.
-- Dock item badges and the `glassdock-ctl badge INDEX COUNT` command.
-- Trusted Python plugins added through **Settings → Launchers → Add other → Plugin widget…**, with an explicit allowlist and trust warning.
-- Existing themes, settings pages, launchers, drag reordering, monitor settings, and live config reload behaviour.
-
-No changes were pushed to GitHub while preparing this snapshot.
+- The usual `bin/glassdock` launcher starts `glassdock.dock_extensions`, which subclasses and extends the existing dock runtime.
+- The existing Settings sidebar is retained. Advanced controls appear inside the Launchers page expander; basic extension preferences remain grouped within Behavior.
+- Advanced persistent data is stored atomically in `~/.config/glassdock/extensions.json`; app-launch usage counts are stored in `~/.config/glassdock/usage.json`.
+- Plugins load only by explicit enable/allowlist. They are trusted Python code running with the current user's permissions, not a sandbox.
+- Media metadata refreshes and weather lookups run off the GTK event loop; music controls use asynchronous D-Bus calls.
 
 ## Verification
 
-- `python3 -m compileall -q glassdock tests examples`
+- `python3 -m compileall -q glassdock tests plugins`
 - `bash scripts/run-tests.sh`
-- Result: 125 tests passed; 2 GTK smoke tests skipped because they require a live Sway/wlr-layer-shell session.
+- The unit/static test suite passed (full result captured when packaging). Two GTK smoke tests require a live Sway/wlr-layer-shell session and are skipped outside that session.
 
-The tests cover the config/model integration, extension helpers, plugin allowlisting, and user-theme save/import/export. Full interactive GTK testing still needs to be run in the target desktop session.
+Interactive runtime smoke testing still needs to be done on the target desktop, because this packaging environment does not have PyGObject/GTK introspection installed.

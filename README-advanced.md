@@ -151,7 +151,7 @@ Settings are stored in `~/.config/glassdock/config.json`. The configuration is v
 
 ## Widgets and extensions
 
-All built-in items are integrated into the normal dock model and can be added in **Settings → Launchers → Add other**. Clock and calendar use native Cairo-drawn icons. Clock format and seconds, calendar week start, music refresh, folder hidden-file visibility, badge limits, and plugin policy are available in **Settings → Widgets & Extensions**.
+Built-in items are part of the normal dock model and can be added in **Settings → Launchers → Add other**. Clock format, seconds, calendar week start, music refresh, folder menu visibility, badge limits, and the legacy plugin allowlist are grouped within **Settings → Behavior**. Additional analog/digital clock styling, the animated folder fan, native Apps/Trash icon overrides, and advanced plugins are managed from the collapsed **Advanced widgets, fan folders, icon overrides and plugins** expander at the bottom of the existing Launchers page; these controls do not add another sidebar page.
 
 Music controls call `playerctl` directly without a shell. Install `playerctl` and use an MPRIS-compatible player; if no player is available, controls report failure rather than pretending the action succeeded. Media commands run outside the GTK event loop.
 
@@ -177,10 +177,10 @@ The default plugin directory is `~/.config/glassdock/plugins/`. Copy the reviewe
 
 ```bash
 mkdir -p ~/.config/glassdock/plugins
-cp examples/plugins/*.py ~/.config/glassdock/plugins/
+cp plugins/*.py ~/.config/glassdock/plugins/
 ```
 
-Then open **Settings → Launchers → Add other → Plugin widget…** and explicitly approve a module. The module names also appear in **Settings → Widgets & Extensions** in the comma-separated allowlist. You can use that page to enable/disable trusted plugins or configure a custom plugin directory. Plugin render output must be JSON-compatible and use string label/icon fields; supported click actions are `toast`, `open_url`, and `open_path`. Plugin code has the current user's permissions and is **not a security sandbox**, so only approve files you have reviewed. The usage example counts activation events in memory and resets on restart.
+Then open **Settings → Launchers → Add other → Plugin widget…** and explicitly approve a module. Advanced plugins are configured in the **Plugins** tab in the Launchers advanced expander. The basic plugin allowlist and custom path remain available under **Settings → Behavior** for the original plugin API. Advanced plugin `CONFIG` values are schema-checked and plugin modules are only imported when explicitly enabled. Plugin code still runs with your account permissions and is **not a security sandbox**, so only approve files you have reviewed. The bundled CPU, usage, and weather examples live in `plugins/`; copy only the ones you trust. Usage data is stored locally and survives restart.
 
 ## Transparency and blur
 
@@ -247,4 +247,3 @@ MIT. See [`LICENSE`](LICENSE). Runtime dependencies are provided by your distrib
 ## Extras
 
 - [GlassIcon Studio](extras/GlassIcon/README.md) — change icon themes, application launcher icons, and file-manager icons.
-
