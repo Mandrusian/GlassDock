@@ -184,7 +184,7 @@ class PackagingIntegrationTests(unittest.TestCase):
         self.assertIn('self.add_page("extensions", "Extensions", self.extensions_panel)', settings_source)
         self.assertIn("ExtensionsPanel(self.store, self.rows)", settings_source)
         self.assertNotIn("Advanced widgets, fan folders, icon overrides and plugins", settings_source)
-        self.assertIn('Gtk.Label(label="Plugins")', extension_source)
+        self.assertIn('labels = ("Widgets", "Folders", "Native icons", "Plugins")', extension_source)
         self.assertIn('Gtk.Label(label="Defaults")', extension_source)
         self.assertIn("ExtensionPreferencesPage", extension_source)
         self.assertNotIn('groups.append((extension_settings, "Widgets & Extensions"))', settings_source)
