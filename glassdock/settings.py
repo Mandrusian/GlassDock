@@ -49,7 +49,7 @@ CATEGORY_BLURBS = {
     "animation": "Magnification, motion and timing.",
     "indicators": "How running and focused apps are marked.",
     "position": "Which edge the dock lives on.",
-    "behavior": "Auto-hide, stacking, commands and built-in dock extensions.",
+    "behavior": "Auto-hide, stacking and dock behavior.",
 }
 
 # page name -> (sidebar icon fallbacks)
@@ -62,6 +62,7 @@ PAGE_ICONS = {
     "position": ("go-bottom-symbolic", "view-pin-symbolic"),
     "behavior": ("preferences-system-symbolic", "emblem-system-symbolic"),
     "launchers": ("view-app-grid-symbolic", "view-list-symbolic"),
+    "extensions": ("applications-utilities-symbolic", "preferences-plugin-symbolic"),
     "monitors": ("video-display-symbolic", "computer-symbolic"),
     "status": ("utilities-system-monitor-symbolic", "dialog-information-symbolic"),
 }
@@ -1356,20 +1357,6 @@ class LaunchersPage(Gtk.Box):
         bar.pack_end(text_button("Reset to defaults", self.reset), False, False, 0)
         self.pack_start(bar, False, False, 0)
 
-        # Keep extension management inside the existing Launchers page rather
-        # than creating new top-level navigation pages.
-        from .extension_settings import ExtensionsPanel
-        self.extensions_panel = ExtensionsPanel()
-        expander = Gtk.Expander(label="Advanced widgets, fan folders, icon overrides and plugins")
-        expander.set_expanded(False)
-        expander_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        expander_box.pack_start(label(
-            "Extra clock styles, MPRIS controls, fan folders, icon overrides and Python plugins. "
-            "Plugin code is trusted code and is not sandboxed.", "md-page-sub", wrap=True), False, False, 0)
-        expander_box.pack_start(self.extensions_panel, True, True, 0)
-        expander.add(expander_box)
-        self.pack_start(expander, False, False, 0)
-
         store.listen_external(self.load)
         self.load()
         self.update_buttons()
@@ -1932,6 +1919,10 @@ class SettingsWindow(Gtk.Window):
         self.launchers = LaunchersPage(self.store, self)
         self.add_page("launchers", "Launchers", self.launchers)
         self.add_page("monitors", "Monitors", MonitorsPage(self.store))
+        self.add_section("Extensions")
+        from .extension_settings import ExtensionsPanel
+        self.extensions_panel = ExtensionsPanel(self.store, self.rows)
+        self.add_page("extensions", "Extensions", self.extensions_panel)
         self.add_section("System")
         self.add_page("status", "Status", StatusPage(self.store))
         self.search_box = page_box()
@@ -2028,28 +2019,14 @@ class SettingsWindow(Gtk.Window):
     def category_page(self, cat, text):
         box = page_box()
         box.pack_start(heading(text, CATEGORY_BLURBS.get(cat)), False, False, 0)
-
-        regular = [s for s in C.SCHEMA
+        lb = settings_list()
+        entries = [s for s in C.SCHEMA
                    if s.category == cat and not s.key.startswith("extensions.")]
-        extension_settings = [s for s in C.SCHEMA
-                              if cat == "behavior" and s.key.startswith("extensions.")]
-        groups = [(regular, None)]
-        if extension_settings:
-            groups.append((extension_settings, "Widgets & Extensions"))
-
-        for entries, title in groups:
-            if not entries:
-                continue
-            if title:
-                box.pack_start(group_title(title), False, False, 0)
-                box.pack_start(label(
-                    "Clock, calendar, music, folders, badges and trusted plugin preferences.",
-                    "md-page-sub", wrap=True), False, False, 8)
-            lb = settings_list()
-            for setting in entries:
-                row = SettingRow(setting, self.store)
-                self.rows.append(row)
-                row_in_list(lb, row)
+        for setting in entries:
+            row = SettingRow(setting, self.store)
+            self.rows.append(row)
+            row_in_list(lb, row)
+        if entries:
             box.pack_start(card(lb), False, False, 0)
         return box
 
