@@ -380,10 +380,10 @@ class ReorderAndSettingsTests(unittest.TestCase):
             {"folders": {"radius": True}},
             {"folders": {"spring": {"stiffness": 0}}},
             {"plugins": {"tick_interval_ms": 49}},
-            {"widgets": {"calendar": {"first_weekday": 7}},
+            {"widgets": {"calendar": {"first_weekday": 7}}},
             {"widgets": {"enabled": ["unknown"]}},
             {"extras": {"hotkeys": {"bindings": {"toggle": "Hyper+D"}}}},
-            {"extras": {"badges": {"max_count": 0}},
+            {"extras": {"badges": {"max_count": 0}}},
             {"widgets": "not an object"},
         )
         for config in invalid:
