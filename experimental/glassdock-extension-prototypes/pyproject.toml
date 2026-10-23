@@ -1,0 +1,10 @@
+[project]
+name = "glassdock-extension-prototypes"
+version = "0.2.0"
+description = "Headless GlassDock extension prototypes and regression tests"
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.pytest.ini_options]
+python_files = ["test_*.py", "*_test.py"]
+addopts = "-ra"
