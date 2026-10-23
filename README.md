@@ -52,3 +52,6 @@ cd GlassDock
 - [License](LICENSE)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
+
+-----------------------------------------------------------------------------------------------------------------------------------
+<p align="center"><img src="https://github.com/user-attachments/assets/7c054541-2a65-477d-9f87-c70fa5d8e190" alt="glassdockbanner" width="250" /></p>
