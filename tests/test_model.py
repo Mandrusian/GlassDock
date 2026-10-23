@@ -89,6 +89,21 @@ class MatchTests(unittest.TestCase):
         items = M.build_items(CFG_ITEMS, ENTRIES, [])
         self.assertTrue(all(not i.running for i in items))
 
+    def test_native_extension_items_are_normal_dock_items(self):
+        specs = [
+            {"type": "widget", "kind": "clock"},
+            {"type": "widget", "kind": "calendar"},
+            {"type": "widget", "kind": "music", "badge_count": 3},
+            {"type": "folder", "path": "/tmp", "name": "Files"},
+            {"type": "plugin", "name": "example_clock"},
+        ]
+        items = M.build_items(specs, ENTRIES, [])
+        self.assertEqual([item.kind for item in items], ["widget", "widget", "widget", "folder", "plugin"])
+        self.assertEqual([item.extension for item in items[:3]], ["clock", "calendar", "music"])
+        self.assertEqual(items[2].badge_count, 3)
+        self.assertEqual(items[3].path, "/tmp")
+        self.assertEqual(items[4].extension, "example_clock")
+
 
 class MagnifyTests(unittest.TestCase):
     def test_curve(self):

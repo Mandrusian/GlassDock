@@ -50,6 +50,7 @@ CATEGORY_BLURBS = {
     "indicators": "How running and focused apps are marked.",
     "position": "Which edge the dock lives on.",
     "behavior": "Auto-hide, stacking and commands.",
+    "extensions": "Clock, calendar, music, folders, badges and trusted Python plugins.",
 }
 
 # page name -> (sidebar icon fallbacks)
@@ -61,6 +62,7 @@ PAGE_ICONS = {
     "indicators": ("media-record-symbolic", "emblem-ok-symbolic"),
     "position": ("go-bottom-symbolic", "view-pin-symbolic"),
     "behavior": ("preferences-system-symbolic", "emblem-system-symbolic"),
+    "extensions": ("application-x-addon-symbolic", "preferences-other-symbolic"),
     "launchers": ("view-app-grid-symbolic", "view-list-symbolic"),
     "monitors": ("video-display-symbolic", "computer-symbolic"),
     "status": ("utilities-system-monitor-symbolic", "dialog-information-symbolic"),
@@ -1303,6 +1305,11 @@ class LaunchersPage(Gtk.Box):
         pbox.set_margin_top(6)
         pbox.set_margin_bottom(6)
         for text, cb in [("Custom launcher…", self.add_custom),
+                         ("Folder…", self.add_folder),
+                         ("Clock widget", lambda *_: self.add_widget("clock")),
+                         ("Calendar widget", lambda *_: self.add_widget("calendar")),
+                         ("Music controls", lambda *_: self.add_widget("music")),
+                         ("Plugin widget…", self.add_plugin_widget),
                          ("Separator", lambda *_: self.append({"type": "separator"})),
                          ("Applications button", lambda *_: self.append({"type": "special", "kind": "apps"})),
                          ("Trash", lambda *_: self.append({"type": "special", "kind": "trash"}))]:
@@ -1336,6 +1343,15 @@ class LaunchersPage(Gtk.Box):
             return gicon_for(info["icon"]), info["name"] + "  ·  built-in"
         if t == "launcher":
             return gicon_for(spec.get("icon")), spec["name"] + "  ·  custom launcher"
+        if t == "folder":
+            return gicon_for(spec.get("icon") or "folder"), spec.get("name") or os.path.basename(spec.get("path", "")) + "  ·  folder"
+        if t == "widget":
+            labels = {"clock": "Clock", "calendar": "Calendar", "music": "Music controls"}
+            icons = {"clock": "clock", "calendar": "x-office-calendar", "music": "audio-x-generic"}
+            kind = spec.get("kind")
+            return gicon_for(icons.get(kind, "applications-system")), labels.get(kind, "Widget") + "  ·  built-in"
+        if t == "plugin":
+            return gicon_for("application-x-python"), spec.get("name", "Plugin") + "  ·  trusted plugin"
         entry = self.store.entries.get(spec["id"])
         if entry is None:
             return gicon_for("dialog-question-symbolic"), "%s  (not installed)" % spec["id"]
@@ -1400,6 +1416,62 @@ class LaunchersPage(Gtk.Box):
         if dlg.run() == Gtk.ResponseType.OK:
             self.append(dlg.spec())
         dlg.destroy()
+
+    def add_folder(self, *_):
+        dlg = Gtk.FileChooserDialog(title="Add folder to GlassDock", parent=self.window,
+                                    action=Gtk.FileChooserAction.SELECT_FOLDER)
+        dlg.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Add Folder", Gtk.ResponseType.OK)
+        dlg.set_select_multiple(False)
+        if dlg.run() == Gtk.ResponseType.OK:
+            path = dlg.get_filename()
+            if path and os.path.isdir(path):
+                name = os.path.basename(path.rstrip(os.sep)) or path
+                self.append({"type": "folder", "path": path, "name": name, "icon": "folder"})
+        dlg.destroy()
+
+    def add_widget(self, kind):
+        if kind not in ("clock", "calendar", "music"):
+            return
+        items = self.current_items()
+        if any(i.get("type") == "widget" and i.get("kind") == kind for i in items):
+            message(self.window, "Widget already added", "Each built-in widget can be added once.")
+            return
+        self.append({"type": "widget", "kind": kind})
+
+    def add_plugin_widget(self, *_):
+        allowlist = [part.strip() for part in self.store.get("extensions.plugin_allowlist").split(",")
+                     if part.strip()]
+        if not self.store.get("extensions.plugins_enabled"):
+            message(self.window, "Plugins are disabled", "Enable trusted user plugins in Widgets & Extensions settings first.")
+            return
+        if not allowlist:
+            message(self.window, "No plugins are allowlisted",
+                    "Add the filename (without .py) to the plugin allowlist after reviewing the code.")
+            return
+        dlg = Gtk.Dialog(title="Add plugin widget", transient_for=self.window, flags=Gtk.DialogFlags.MODAL)
+        dlg.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dlg.add_button("Add", Gtk.ResponseType.OK)
+        box = dlg.get_content_area()
+        box.set_spacing(8)
+        box.set_border_width(12)
+        box.pack_start(label("Plugin module name (without .py):"), False, False, 0)
+        entry = Gtk.Entry()
+        entry.set_placeholder_text("example_clock")
+        entry.set_activates_default(True)
+        box.pack_start(entry, False, False, 0)
+        dlg.set_default_response(Gtk.ResponseType.OK)
+        dlg.show_all()
+        response = dlg.run()
+        name = entry.get_text().strip()
+        dlg.destroy()
+        if response == Gtk.ResponseType.OK:
+            if name not in allowlist:
+                message(self.window, "Plugin not allowlisted", "Only modules listed in Widgets & Extensions settings may be added.")
+                return
+            if any(i.get("type") == "plugin" and i.get("name") == name for i in self.current_items()):
+                message(self.window, "Plugin already added", "This plugin is already on the dock.")
+                return
+            self.append({"type": "plugin", "name": name})
 
     def edit_row(self, tree, path, col):
         self.edit_at(path.get_indices()[0])
@@ -1754,6 +1826,9 @@ class SettingsWindow(Gtk.Window):
         for cat, text in C.CATEGORIES:
             if cat in ("position", "behavior"):
                 self.add_page(cat, text, self.category_page(cat, text))
+        self.add_section("Widgets & Extensions")
+        self.add_page("extensions", "Widgets & Extensions",
+                      self.category_page("extensions", "Widgets & Extensions"))
         self.launchers = LaunchersPage(self.store, self)
         self.add_page("launchers", "Launchers", self.launchers)
         self.add_page("monitors", "Monitors", MonitorsPage(self.store))
