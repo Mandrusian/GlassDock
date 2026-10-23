@@ -113,14 +113,14 @@ def build_items(cfg_items, entries, windows, show_unpinned=True):
             info = SPECIAL_KINDS[spec["kind"]]
             items.append(DockItem(key="special:%s" % spec["kind"], kind="special",
                                   name=info["name"], icon=info["icon"],
-                                  special=spec["kind"], cfg_index=idx))
+                                  special=spec["kind"], badge_count=spec.get("badge_count", 0), cfg_index=idx))
             idents.append(None)
         elif t == "app":
             entry = find_entry(entries, spec["id"])
             if entry is None:
                 continue  # not installed: keep in config, hide from dock
             items.append(DockItem(key="app:%s" % entry.id, kind="app", name=spec.get("name") or entry.name,
-                                  icon=spec.get("icon") or entry.icon, entry=entry, cfg_index=idx))
+                                  icon=spec.get("icon") or entry.icon, entry=entry, badge_count=spec.get("badge_count", 0), cfg_index=idx))
             idents.append(entry_identifiers(entry))
         elif t == "launcher":
             try:
@@ -128,7 +128,7 @@ def build_items(cfg_items, entries, windows, show_unpinned=True):
             except ValueError:
                 argv = spec["exec"].split()
             items.append(DockItem(key="launcher:%d" % idx, kind="launcher", name=spec["name"],
-                                  icon=spec.get("icon", ""), argv=argv, cfg_index=idx))
+                                  icon=spec.get("icon", ""), argv=argv, badge_count=spec.get("badge_count", 0), cfg_index=idx))
             idents.append(_launcher_identifiers(spec))
         elif t == "folder":
             path = spec.get("path", "")
