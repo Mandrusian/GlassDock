@@ -1,0 +1,21 @@
+{
+  "name": "GlassDock extension prototypes",
+  "schema_version": 1,
+  "status": "experimental-not-integrated",
+  "minimum_python": "3.9",
+  "runtime_dependencies": [],
+  "optional_runtime_dependencies": [
+    "playerctl",
+    "an MPRIS-compatible media player"
+  ],
+  "features": [
+    {"id": "settings", "module": "settings_test.py", "status": "headless-validated"},
+    {"id": "clock-calendar-music", "module": "dock_features_test.py", "status": "headless-validated"},
+    {"id": "folders", "module": "dock_folders_test.py", "status": "headless-validated"},
+    {"id": "plugin-host", "module": "plugin_manager_test.py", "status": "headless-validated", "security": "trusted-python-code-not-sandboxed"},
+    {"id": "reorder-spring", "module": "reorder_test.py", "status": "headless-validated"},
+    {"id": "badges-hotkeys", "module": "badges_hotkeys_test.py", "status": "headless-validated"}
+  ],
+  "test_command": "python3 -m unittest -v test_extensions_test.py",
+  "live_integration_required": true
+}
