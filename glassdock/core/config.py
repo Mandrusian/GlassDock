@@ -308,9 +308,10 @@ def validate_items(items):
         return None
 
     def add(spec, raw):
-        count = raw.get("badge_count", 0)
-        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
-            spec["badge_count"] = min(count, 999999)
+        if "badge_count" in raw:
+            count = raw.get("badge_count")
+            if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                spec["badge_count"] = min(count, 999999)
         out.append(spec)
 
     for it in items:
