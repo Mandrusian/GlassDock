@@ -37,3 +37,26 @@ cd GlassDock
 - [GlassIcon Studio](extras/GlassIcon/README.md) — companion icon tool.
 - [License](LICENSE)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
+
+## Screenshots
+
+<details>
+<summary>View screenshots</summary>
+
+<table>
+<tr>
+<td><img src="assets/desktop.png" alt="Desktop screenshot" width="420"></td>
+<td><img src="assets/themes.png" alt="Available themes" width="420"></td>
+</tr>
+<tr>
+<td><img src="assets/liquidglass.png" alt="Liquid Glass appearance" width="420"></td>
+<td><img src="assets/zoomed.png" alt="Magnified dock" width="420"></td>
+</tr>
+<tr>
+<td><img src="assets/iconname.png" alt="Application icon names" width="420"></td>
+<td><img src="assets/about.png" alt="About dialog" width="420"></td>
+</tr>
+</table>
+
+</details>
+
