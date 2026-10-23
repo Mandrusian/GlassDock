@@ -954,7 +954,18 @@ class DockWindow(Gtk.Window):
         def sep():
             menu.append(Gtk.SeparatorMenuItem())
 
-        if item is not None and item.kind in ("app", "launcher"):
+        if item is not None and item.kind == "folder":
+            add("Open folder in file manager", lambda: spawn(["xdg-open", item.path]))
+            sep()
+            self.add_folder_children(menu, item)
+            sep()
+        elif item is not None and item.kind == "widget" and item.extension == "music":
+            add("Play / Pause", lambda: self.app.music_action("play-pause"))
+            add("Next track", lambda: self.app.music_action("next"))
+            add("Previous track", lambda: self.app.music_action("previous"))
+            add("Stop", lambda: self.app.music_action("stop"))
+            sep()
+        elif item is not None and item.kind in ("app", "launcher"):
             for win in item.windows[:8]:
                 title = (win.title or item.name)
                 title = title if len(title) <= 48 else title[:47] + "…"
@@ -978,6 +989,9 @@ class DockWindow(Gtk.Window):
             add("Open", lambda: self.app.activate(item, False, self))
             add("Remove from Dock", lambda: self.app.unpin(item))
             sep()
+        if item is not None and item.cfg_index >= 0 and item.kind != "separator":
+            sep()
+            add("Set badge count…", lambda: self.app.edit_badge(item))
         add("Dock Settings…", self.app.open_settings)
         add("Quit Dock", Gtk.main_quit)
         menu.show_all()
@@ -1005,6 +1019,82 @@ class DockWindow(Gtk.Window):
         self.menu_open = False
         self.reevaluate()
         GLib.timeout_add(1500, lambda: (menu.destroy(), False)[1])
+
+    def _popup_at_item(self, menu, item, ev):
+        menu.show_all()
+        self.menu_open = True
+        menu.connect("deactivate", self._menu_closed)
+        menu.attach_to_widget(self.area, None)
+        if ev is None:
+            menu.popup_at_pointer()
+            return
+        try:
+            pos, sizes, _length, m0 = self.layout()
+            idx = self.items.index(item)
+            m, cc, ss = self.item_rect(idx, pos, sizes, m0)
+            W, H = self.area.get_allocated_width(), self.area.get_allocated_height()
+            x, y, w, h = M.place(self.geo.edge, W, H, m, cc, ss, ss)
+            rect = Gdk.Rectangle()
+            rect.x, rect.y, rect.width, rect.height = int(x), int(y), int(w), int(h)
+            anchors = {
+                "bottom": (Gdk.Gravity.NORTH, Gdk.Gravity.SOUTH),
+                "top": (Gdk.Gravity.SOUTH, Gdk.Gravity.NORTH),
+                "left": (Gdk.Gravity.EAST, Gdk.Gravity.WEST),
+                "right": (Gdk.Gravity.WEST, Gdk.Gravity.EAST),
+            }
+            menu.popup_at_rect(self.area.get_window(), rect, anchors[self.geo.edge][0],
+                               anchors[self.geo.edge][1], ev)
+        except Exception:
+            menu.popup_at_pointer(ev)
+
+    def add_folder_children(self, menu, item):
+        try:
+            children = E.folder_children(item.path, self.g("extensions.folder_show_hidden"))
+        except (OSError, ValueError) as exc:
+            leaf = Gtk.MenuItem(label="Folder unavailable: %s" % exc)
+            leaf.set_sensitive(False)
+            menu.append(leaf)
+            return
+        limit = self.g("extensions.folder_popup_limit")
+        for child in children[:limit]:
+            label = child["name"] + ("/" if child["is_dir"] else "")
+            entry = Gtk.MenuItem(label=label)
+            entry.connect("activate", lambda *_args, p=child["path"]: spawn(["xdg-open", p]))
+            menu.append(entry)
+        if len(children) > limit:
+            more = Gtk.MenuItem(label="Open folder… (%d more)" % (len(children) - limit))
+            more.connect("activate", lambda *_: spawn(["xdg-open", item.path]))
+            menu.append(more)
+
+    def show_folder_menu(self, item, ev=None):
+        menu = Gtk.Menu()
+        head = Gtk.MenuItem(label=item.name)
+        head.set_sensitive(False)
+        menu.append(head)
+        menu.append(Gtk.SeparatorMenuItem())
+        self.add_folder_children(menu, item)
+        menu.append(Gtk.SeparatorMenuItem())
+        open_item = Gtk.MenuItem(label="Open folder in file manager")
+        open_item.connect("activate", lambda *_: spawn(["xdg-open", item.path]))
+        menu.append(open_item)
+        self._popup_at_item(menu, item, ev)
+
+    def show_calendar_menu(self, item, ev=None):
+        first_day = 6 if self.g("extensions.calendar_first_weekday") == "sunday" else 0
+        month = E.calendar_month(first_weekday=first_day)
+        menu = Gtk.Menu()
+        title = Gtk.MenuItem(label="%s %s" % (month["month_name"], month["year"]))
+        title.set_sensitive(False)
+        menu.append(title)
+        menu.append(Gtk.SeparatorMenuItem())
+        header = Gtk.MenuItem(label="  ".join(month["headers"]))
+        header.set_sensitive(False)
+        menu.append(header)
+        for week in month["weeks"]:
+            row = Gtk.MenuItem(label="  ".join("%2s" % day if day else "  " for day in week))
+            row.set_sensitive(False)
+            menu.append(row)
+        self._popup_at_item(menu, item, ev)
 
 
 # ------------------------------------------------------------------- application
