@@ -1067,18 +1067,101 @@ class DockWindow(Gtk.Window):
             menu.append(more)
 
     def show_folder_menu(self, item, ev=None):
-        menu = Gtk.Menu()
-        head = Gtk.MenuItem(label=item.name)
-        head.set_sensitive(False)
-        menu.append(head)
-        menu.append(Gtk.SeparatorMenuItem())
-        self.add_folder_children(menu, item)
-        menu.append(Gtk.SeparatorMenuItem())
-        open_item = Gtk.MenuItem(label="Open folder in file manager")
-        open_item.connect("activate", lambda *_: spawn(["xdg-open", item.path]))
-        menu.append(open_item)
-        self._popup_at_item(menu, item, ev)
+        """Open a native, animated-style folder fan instead of a standalone utility."""
+        try:
+            children = E.folder_children(item.path, self.g("extensions.folder_show_hidden"))
+        except (OSError, ValueError) as exc:
+            toast("Folder unavailable: %s" % exc)
+            return
 
+        edge = self.geo.edge
+        width, height = (320, 250) if M.is_horizontal(edge) else (260, 320)
+        popover = Gtk.Popover.new(self.area)
+        popover.set_position({
+            "bottom": Gtk.PositionType.TOP,
+            "top": Gtk.PositionType.BOTTOM,
+            "left": Gtk.PositionType.RIGHT,
+            "right": Gtk.PositionType.LEFT,
+        }[edge])
+        fixed = Gtk.Fixed()
+        fixed.set_size_request(width, height)
+        popover.add(fixed)
+        title = Gtk.Label(label=item.name)
+        title.set_ellipsize(Pango.EllipsizeMode.END)
+        title.set_max_width_chars(22)
+        title.set_size_request(width - 32, 24)
+        fixed.put(title, 16, 4)
+
+        limit = min(self.g("extensions.folder_popup_limit"), 6)
+        visible = children[:limit]
+        radius = self.g("extensions.folder_fan_radius")
+        arc = self.g("extensions.folder_fan_angle")
+        origins = {
+            "bottom": (width / 2, height - 58, -145),
+            "top": (width / 2, 48, 35),
+            "left": (46, height / 2, -55),
+            "right": (width - 46, height / 2, 125),
+        }
+        ox, oy, start = origins[edge]
+        positions = E.fan_positions(
+            len(visible), (ox, oy), radius=radius, angle_degrees=arc, start_degrees=start
+        )
+        for child, point in zip(visible, positions):
+            button = Gtk.Button()
+            button.set_relief(Gtk.ReliefStyle.NONE)
+            button.set_size_request(38, 38)
+            icon_name = "folder-symbolic" if child["is_dir"] else "text-x-generic-symbolic"
+            icon = Gtk.Image.new_from_icon_name(icon_name, Gtk.IconSize.DIALOG)
+            icon.set_pixel_size(24)
+            button.add(icon)
+            button.set_tooltip_text(child["name"])
+            x = int(max(3, min(width - 41, point["x"] - 19)))
+            y = int(max(32, min(height - 47, point["y"] - 19)))
+            button.connect(
+                "clicked",
+                lambda _button, p=child["path"], pop=popover: (
+                    pop.popdown(), spawn(["xdg-open", p])
+                ),
+            )
+            fixed.put(button, x, y)
+
+        open_button = Gtk.Button(label="Open folder")
+        open_button.set_size_request(132, 30)
+        open_button.connect(
+            "clicked",
+            lambda _button, p=item.path, pop=popover: (pop.popdown(), spawn(["xdg-open", p])),
+        )
+        fixed.put(open_button, (width - 132) // 2, height - 38)
+        if len(children) > len(visible):
+            more = Gtk.Label(label="%d more items" % (len(children) - len(visible)))
+            more.set_sensitive(False)
+            more.set_size_request(width - 20, 20)
+            fixed.put(more, 10, height - 66)
+
+        popover.set_modal(False)
+        popover.set_relative_to(self.area)
+        if ev is not None:
+            try:
+                pos, sizes, _length, m0 = self.layout()
+                idx = self.items.index(item)
+                m, cc, ss = self.item_rect(idx, pos, sizes, m0)
+                W, H = self.area.get_allocated_width(), self.area.get_allocated_height()
+                px, py, pw, ph = M.place(edge, W, H, m, cc, ss, ss)
+                rect = Gdk.Rectangle()
+                rect.x, rect.y, rect.width, rect.height = int(px), int(py), int(pw), int(ph)
+                popover.set_pointing_to(rect)
+            except (ValueError, IndexError, AttributeError):
+                pass
+        self.folder_popover = popover
+        self.menu_open = True
+        popover.connect("closed", lambda *_: self._folder_popover_closed())
+        popover.show_all()
+        popover.popup()
+
+    def _folder_popover_closed(self):
+        self.menu_open = False
+        self.reevaluate()
+        self.queue_draw()
     def show_calendar_menu(self, item, ev=None):
         first_day = 6 if self.g("extensions.calendar_first_weekday") == "sunday" else 0
         month = E.calendar_month(first_weekday=first_day)
