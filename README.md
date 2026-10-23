@@ -15,6 +15,10 @@ GlassDock brings a clean, macOS-inspired dock to your Wayland desktop without re
 - **Graphical settings** — adjust colors, gradients, opacity, borders, shadows, radius, sizing, animations, indicators, themes, launchers, and monitor overrides with a live preview.
 - **Multiple looks** — Smoky Glass, Dark, Light, macOS-inspired, Liquid Glass-inspired, Purple/Pink, and Custom themes.
 
+## Screenshots
+
+<!-- Add screenshots here once available. Store images in the repository (for example, `docs/screenshots/`) and embed them with Markdown image links. -->
+
 ## Requirements
 
 - A Wayland session with `wlr-layer-shell` support.
