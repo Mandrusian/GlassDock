@@ -1,6 +1,21 @@
 #!/usr/bin/env bash
-# Install GlassDock's runtime dependencies (Fedora/Asahi, Debian/Ubuntu, Arch, openSUSE).
+# Install GlassDock runtime dependencies (Fedora/Asahi, Debian/Ubuntu, Arch, openSUSE, Termux).
 set -euo pipefail
+
+# Termux is Android's user-space environment and has no sudo.
+if [ -n "${TERMUX_VERSION:-}" ] || [ "${PREFIX:-}" = "/data/data/com.termux/files/usr" ] || [ "${PREFIX:-}" = "/data/user/0/com.termux/files/usr" ]; then
+    command -v pkg >/dev/null 2>&1 || {
+        echo "Termux was detected, but pkg was not found. Run this inside the Termux app." >&2
+        exit 1
+    }
+    REQUIRED=(python python-gobject python-cairo gtk3 gtk-layer-shell)
+    echo "==> Updating Termux package lists"
+    pkg update
+    echo "==> Installing required packages (Termux): ${REQUIRED[*]}"
+    pkg install -y "${REQUIRED[@]}"
+    echo "==> Done. GlassDock still requires a running Wayland compositor/session with layer-shell support."
+    exit 0
+fi
 
 if command -v dnf >/dev/null 2>&1; then
     REQUIRED=(python3 python3-gobject python3-cairo gtk3 gtk-layer-shell gobject-introspection adwaita-icon-theme)
