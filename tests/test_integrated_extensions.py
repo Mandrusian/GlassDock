@@ -177,11 +177,17 @@ class PackagingIntegrationTests(unittest.TestCase):
         self.assertIn("self.bus.signal_unsubscribe(self.subscription_id)", source)
         self.assertIn("self.badges.close()", (self.ROOT / "glassdock" / "dock_extensions.py").read_text(encoding="utf-8"))
 
-    def test_advanced_settings_are_embedded_in_launchers(self):
-        source = (self.ROOT / "glassdock" / "settings.py").read_text(encoding="utf-8")
-        self.assertIn("ExtensionsPanel()", source)
-        self.assertIn("Advanced widgets, fan folders, icon overrides and plugins", source)
-        self.assertNotIn("Extras (test)", source)
+    def test_advanced_settings_have_a_dedicated_sidebar_section(self):
+        settings_source = (self.ROOT / "glassdock" / "settings.py").read_text(encoding="utf-8")
+        extension_source = (self.ROOT / "glassdock" / "extension_settings.py").read_text(encoding="utf-8")
+        self.assertIn('self.add_section("Extensions")', settings_source)
+        self.assertIn('self.add_page("extensions", "Extensions", self.extensions_panel)', settings_source)
+        self.assertIn("ExtensionsPanel(self.store, self.rows)", settings_source)
+        self.assertNotIn("Advanced widgets, fan folders, icon overrides and plugins", settings_source)
+        self.assertIn('Gtk.Label(label="Plugins")', extension_source)
+        self.assertIn('Gtk.Label(label="Defaults")', extension_source)
+        self.assertIn("ExtensionPreferencesPage", extension_source)
+        self.assertNotIn('groups.append((extension_settings, "Widgets & Extensions"))', settings_source)
 
 
 if __name__ == "__main__":
