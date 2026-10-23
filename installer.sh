@@ -15,6 +15,11 @@ BIN="${XDG_BIN_HOME:-$HOME/.local/bin}"
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}"
+# Detect Android/Termux before any Linux package-manager or sudo path.
+IS_TERMUX=0
+case "${PREFIX:-}" in /data/data/com.termux/files/usr|/data/user/0/com.termux/files/usr) IS_TERMUX=1;; esac
+[ -z "${TERMUX_VERSION:-}" ] || IS_TERMUX=1
+[ -z "${ANDROID_ROOT:-}" ] || IS_TERMUX=1
 DEST="${GLASSDOCK_INSTALL_DIR:-$DATA/GlassDock}"
 DEST_FORCED=0; [ -z "${GLASSDOCK_INSTALL_DIR:-}" ] || DEST_FORCED=1
 APP="$DATA/applications"
@@ -231,7 +236,10 @@ preflight() {
   _check "GTK 3 Python bindings (python3-gobject, gtk3)" "$GI_OK"
   _check "gtk-layer-shell" "$LS_OK"
   if command -v git >/dev/null 2>&1; then ok "git"; elif command -v curl >/dev/null 2>&1; then warn "git missing; will download a tarball with curl instead"; else bad "git or curl ${D}(one is required)${X}"; die "Install git or curl first."; fi
-  command -v sway >/dev/null 2>&1 && ok "sway" || warn "sway not found on PATH (the dock needs Sway/SwayFX on Wayland)"
+  command -v sway >/dev/null 2>&1 && ok "sway" || warn "sway not found on PATH (the dock needs a Wayland compositor with layer-shell support)"
+  if [ "$IS_TERMUX" = 1 ]; then
+    warn "Android/Termux detected: dependency installation uses pkg and never sudo. GlassDock still requires a compatible Wayland compositor; it is not an Android launcher."
+  fi
   case ":$PATH:" in *":$BIN:"*) ok "$BIN is on your PATH";; *) warn "$BIN is not on your PATH; commands like glassdock won't be found until it is";; esac
 }
 deps_missing() { [ "$PY_OK" = 0 ] || [ "$GI_OK" = 0 ] || [ "$LS_OK" = 0 ]; }
@@ -417,7 +425,11 @@ maybe_install_deps() {
     step "Dependencies"
     warn "Some required packages are missing (see the checklist above)."
     if interactive; then
-      if confirm "Install them now with scripts/install-deps.sh? (asks for your sudo password)" y; then want=1; fi
+      if [ "$IS_TERMUX" = 1 ]; then
+        if confirm "Install missing dependencies with Termux pkg (no sudo)?" y; then want=1; fi
+      else
+        if confirm "Install them now with scripts/install-deps.sh? (may ask for your sudo password)" y; then want=1; fi
+      fi
     else note "Not installing them unattended. Re-run with --deps (or GLASSDOCK_INSTALL_DEPS=y) to allow sudo."; fi
   fi
   if [ "$want" = 1 ]; then
@@ -430,6 +442,11 @@ maybe_install_deps() {
 
 INSTALL_ARGS=()
 ask_options() {
+  # XDG desktop autostart is not Android app autostart.
+  if [ "$IS_TERMUX" = 1 ]; then
+    INSTALL_ARGS+=(--no-autostart)
+    return 0
+  fi
   if supports '--autostart' && [ ! -e "$AUTO/glassdock.desktop" ]; then
     if confirm "Start GlassDock automatically when you log in?" y; then INSTALL_ARGS+=(--autostart)
     elif supports '--no-autostart'; then INSTALL_ARGS+=(--no-autostart); fi
@@ -590,7 +607,7 @@ Usage: installer.sh [options]
   --action NAME    install | glassicon | uninstall | uninstall-glassicon | status
   --dir PATH       where the managed source checkout lives (default: $DATA/GlassDock)
   --branch NAME    branch to install (default: $BRANCH)
-  --deps           also install system dependencies (uses sudo)
+  --deps           also install dependencies (uses pkg on Termux; otherwise system package manager)
   -y, --yes        accept the safe default for every question (no prompts)
   -n, --dry-run    show what would happen without changing anything
   --no-color       plain output
@@ -643,7 +660,7 @@ main() {
   parse_args "$@"
   [ "$(id -u)" -ne 0 ] || die "Run as your normal user, not root."
   case "$ACTION" in ""|install|glassicon|uninstall|uninstall-glassicon|status|quit) ;; *) die "Unknown action '$ACTION'.";; esac
-  log "start action='${ACTION:-menu}' dest=$DEST yes=$YES dry=$DRY tty=$HAVE_TTY"
+  log "start action='${ACTION:-menu}' dest=$DEST yes=$YES dry=$DRY tty=$HAVE_TTY android_termux=$IS_TERMUX"
   show_status
   [ -n "$ACTION" ] || choose_action
   case "$ACTION" in
