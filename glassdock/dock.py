@@ -11,6 +11,7 @@ import shlex
 import shutil
 import signal
 import subprocess
+import threading
 import sys
 import time
 
@@ -1205,6 +1206,9 @@ class DockApp:
         self.music_controller = None
         self.plugin_manager = None
         self.extension_tick_id = None
+        self._music_refresh_pending = False
+        self._music_action_pending = False
+        self._music_last_request = 0.0
 
     # ------------------------------------------------------------ lifecycle
     def run(self):
@@ -1576,17 +1580,34 @@ class DockApp:
             self.plugin_manager = None
 
     def refresh_extensions(self):
+        """Update extension labels without blocking GTK on external media commands."""
         if not self.cfg:
             return True
         g = getter(self.cfg)
         now = time.monotonic()
         clock = E.clock_text(fmt=g("extensions.clock_format"),
                              show_seconds=g("extensions.clock_show_seconds"))
-        if self.music_controller is not None:
-            music = self.music_controller.refresh(
-                now=now, interval=g("extensions.music_refresh_seconds"))
+        controller = self.music_controller
+        if controller is not None:
+            interval = g("extensions.music_refresh_seconds")
+            if (not self._music_refresh_pending and not self._music_action_pending
+                    and now - self._music_last_request >= interval):
+                self._music_refresh_pending = True
+                self._music_last_request = now
+
+                def refresh_worker():
+                    try:
+                        controller.refresh(now=time.monotonic(), force=True, interval=interval)
+                    except Exception as exc:
+                        log("music metadata refresh failed: %s" % exc)
+                    GLib.idle_add(self._music_refresh_completed, controller)
+
+                threading.Thread(target=refresh_worker, daemon=True,
+                                 name="glassdock-music-refresh").start()
+            music = controller.snapshot()
         else:
             music = {"title": "Nothing playing", "status": "Stopped"}
+
         for item in self.items:
             old = (item.name, item.icon, item.extension_text)
             if item.kind == "widget":
@@ -1611,11 +1632,42 @@ class DockApp:
             self.plugin_manager.tick(now=time.time())
         return True
 
+    def _music_refresh_completed(self, controller):
+        self._music_refresh_pending = False
+        if controller is self.music_controller:
+            self.refresh_extensions()
+        return False
+
     def music_action(self, action):
-        if self.music_controller is None or not self.music_controller.command(action):
+        """Dispatch playerctl actions off the GTK loop so an absent player cannot freeze the dock."""
+        controller = self.music_controller
+        if controller is None:
+            toast("Music control failed. Check playerctl and your media player.")
+            return
+        if self._music_action_pending:
+            return
+        self._music_action_pending = True
+
+        def action_worker():
+            try:
+                ok = controller.command(action)
+            except Exception as exc:
+                log("music action failed: %s" % exc)
+                ok = False
+            GLib.idle_add(self._music_action_completed, controller, ok)
+
+        threading.Thread(target=action_worker, daemon=True, name="glassdock-music-action").start()
+
+    def _music_action_completed(self, controller, ok):
+        self._music_action_pending = False
+        if controller is not self.music_controller:
+            return False
+        if not ok:
             toast("Music control failed. Check playerctl and your media player.")
         else:
+            self._music_last_request = 0.0
             self.refresh_extensions()
+        return False
 
     def set_badge_config(self, idx, count):
         items = (self.cfg or {}).get("items", [])
