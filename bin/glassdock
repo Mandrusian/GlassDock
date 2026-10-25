@@ -8,7 +8,8 @@ while [ -L "$SOURCE" ]; do
 done
 ROOT="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
 if [ "$(uname -s)" = Darwin ]; then
-    exec "$ROOT/macos/build/GlassDock" "$@"
+    export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+    exec "$ROOT/.venv-macos/bin/python" -m glassdock.macos "$@"
 fi
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
