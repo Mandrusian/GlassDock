@@ -11,7 +11,7 @@
 # Settings -> Behavior ("Only auto-start in these sessions/WMs", default: sway).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 APP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 CONF_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -38,6 +38,31 @@ if [ "$(id -u)" -eq 0 ] && [ -z "${GLASSDOCK_ALLOW_ROOT:-}" ]; then
 fi
 
 chmod +x "$ROOT"/bin/* "$ROOT"/scripts/*.sh "$ROOT"/install.sh 2>/dev/null || true
+
+if [ "$(uname -s)" = Darwin ]; then
+    [ "$DO_DEPS" = 0 ] || echo "macOS uses Xcode Command Line Tools, not gtk-layer-shell."
+    command -v python3 >/dev/null 2>&1 || { echo "Python 3 is required" >&2; exit 1; }
+    mkdir -p "${XDG_BIN_HOME:-$HOME/.local/bin}" "$HOME/Library/LaunchAgents"
+    python3 -m venv "$ROOT/.venv-macos"
+    "$ROOT/.venv-macos/bin/python" -m pip install --disable-pip-version-check "pyobjc-framework-Cocoa>=10,<13" || exit 1
+    "$ROOT/.venv-macos/bin/python" -m py_compile "$ROOT/glassdock/macos.py"
+    ln -sfn "$ROOT/bin/glassdock" "${XDG_BIN_HOME:-$HOME/.local/bin}/glassdock"
+    if [ "$DO_AUTOSTART" = 1 ]; then
+        cat >"$HOME/Library/LaunchAgents/com.mandrusian.glassdock.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>com.mandrusian.glassdock</string>
+<key>ProgramArguments</key><array><string>$ROOT/bin/glassdock</string></array>
+<key>RunAtLoad</key><true/>
+<key>KeepAlive</key><false/>
+</dict></plist>
+PLIST
+    fi
+    echo "Python macOS GlassDock preview installed. Run: $ROOT/bin/glassdock"
+    echo "Right-click the dock for GlassDock Settings or Quit; advanced Linux plugins are not yet supported."
+    exit 0
+fi
 
 if [ "$DO_DEPS" = 1 ]; then
     "$ROOT/scripts/install-deps.sh"

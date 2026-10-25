@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 # GlassDock launcher: runs the project in place (no system-wide install).
-ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    TARGET="$(readlink "$SOURCE")"
+    case "$TARGET" in /*) SOURCE="$TARGET";; *) SOURCE="$DIR/$TARGET";; esac
+done
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
+if [ "$(uname -s)" = Darwin ]; then
+    export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+    exec "$ROOT/.venv-macos/bin/python" -m glassdock.macos "$@"
+fi
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
 
 # "--autostart": only start when the settings allow it for this session / window manager.
