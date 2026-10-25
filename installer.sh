@@ -223,7 +223,7 @@ preflight() {
   step "Checking your system"
   if [ "$(uname -s)" = Darwin ]; then
     PY_OK=1; GI_OK=1; LS_OK=1
-    command -v swiftc >/dev/null 2>&1 && ok "Swift compiler (macOS native backend)" || warn "Swift compiler missing: run xcode-select --install"
+    command -v python3 >/dev/null 2>&1 && ok "Python 3 (macOS PyObjC backend)" || warn "Python 3 missing"
     command -v git >/dev/null 2>&1 && ok "git" || warn "git missing"
     return 0
   fi
