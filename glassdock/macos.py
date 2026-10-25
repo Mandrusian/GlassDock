@@ -136,7 +136,7 @@ class DockApp(NSObject):
         spacing = float(setting("size.spacing"))
         width = max(90, min(1800, len(apps) * (size + spacing) + 24))
         height = size + 24 + size * max(0.0, float(setting("animation.magnify_factor")) - 1)
-        if old != new or abs(self.panel.frame().size.width - width) > 1:
+        if old != new or abs(self.panel.frame().size.width - width) > 1 or abs(self.panel.frame().size.height - height) > 1:
             self.panel.setContentSize_((width, height))
             self.view.setFrame_(NSMakeRect(0, 0, width, height))
             screen = NSScreen.mainScreen() or NSScreen.screens()[0]
@@ -184,6 +184,7 @@ class DockApp(NSObject):
         info.setFrame_(NSMakeRect(22, 20, 440, 24))
         win.contentView().addSubview_(info)
         self.settings = win
+        self.settings.retain()
         win.makeKeyAndOrderFront_(None)
         NSApp.activateIgnoringOtherApps_(True)
 
