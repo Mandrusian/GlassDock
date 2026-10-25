@@ -41,9 +41,11 @@ chmod +x "$ROOT"/bin/* "$ROOT"/scripts/*.sh "$ROOT"/install.sh 2>/dev/null || tr
 
 if [ "$(uname -s)" = Darwin ]; then
     [ "$DO_DEPS" = 0 ] || echo "macOS uses Xcode Command Line Tools, not gtk-layer-shell."
-    command -v swiftc >/dev/null 2>&1 || { echo "Install Xcode Command Line Tools first: xcode-select --install" >&2; exit 1; }
-    mkdir -p "$ROOT/macos/build" "${XDG_BIN_HOME:-$HOME/.local/bin}" "$HOME/Library/LaunchAgents"
-    swiftc "$ROOT/macos/GlassDock.swift" -o "$ROOT/macos/build/GlassDock" || exit 1
+    command -v python3 >/dev/null 2>&1 || { echo "Python 3 is required" >&2; exit 1; }
+    mkdir -p "${XDG_BIN_HOME:-$HOME/.local/bin}" "$HOME/Library/LaunchAgents"
+    python3 -m venv "$ROOT/.venv-macos"
+    "$ROOT/.venv-macos/bin/python" -m pip install --disable-pip-version-check "pyobjc-framework-Cocoa>=10,<13" || exit 1
+    "$ROOT/.venv-macos/bin/python" -m py_compile "$ROOT/glassdock/macos.py"
     ln -sfn "$ROOT/bin/glassdock" "${XDG_BIN_HOME:-$HOME/.local/bin}/glassdock"
     if [ "$DO_AUTOSTART" = 1 ]; then
         cat >"$HOME/Library/LaunchAgents/com.mandrusian.glassdock.plist" <<PLIST
@@ -57,8 +59,8 @@ if [ "$(uname -s)" = Darwin ]; then
 </dict></plist>
 PLIST
     fi
-    echo "Native macOS GlassDock preview installed. Run: $ROOT/bin/glassdock"
-    echo "This preview shows running apps only; Linux settings and plugins are not yet supported."
+    echo "Python macOS GlassDock preview installed. Run: $ROOT/bin/glassdock"
+    echo "Right-click the dock for GlassDock Settings or Quit; advanced Linux plugins are not yet supported."
     exit 0
 fi
 
