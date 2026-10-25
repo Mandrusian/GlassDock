@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # GlassDock launcher: runs the project in place (no system-wide install).
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    TARGET="$(readlink "$SOURCE")"
+    case "$TARGET" in /*) SOURCE="$TARGET";; *) SOURCE="$DIR/$TARGET";; esac
+done
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
 if [ "$(uname -s)" = Darwin ]; then
     exec "$ROOT/macos/build/GlassDock" "$@"
 fi
