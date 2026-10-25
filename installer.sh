@@ -213,7 +213,7 @@ show_status() {
     dirty) row "Source" "$DEST ${D}($CK_BRANCH @ $CK_HEAD)${X} ${Y}${S_WARN} $CK_DIRTY local change(s)${X}";;
   esac
   [ -z "$LOCAL_ROOT" ] || row "This folder" "${D}$LOCAL_ROOT (a GlassDock checkout)${X}"
-  if in_session; then row "Session" "${D}Wayland ${XDG_CURRENT_DESKTOP:-${XDG_SESSION_DESKTOP:-detected}}${X}"; else row "Session" "${D}no Wayland session in this shell${X}"; fi
+  if [ "$(uname -s)" = Darwin ]; then row "Session" "macOS Aqua"; elif in_session; then row "Session" "${D}Wayland ${XDG_CURRENT_DESKTOP:-${XDG_SESSION_DESKTOP:-detected}}${X}"; else row "Session" "${D}no Wayland session in this shell${X}"; fi
   printf '\n' >&2
 }
 
@@ -221,6 +221,12 @@ show_status() {
 PY_OK=1; GI_OK=1; LS_OK=1
 preflight() {
   step "Checking your system"
+  if [ "$(uname -s)" = Darwin ]; then
+    PY_OK=1; GI_OK=1; LS_OK=1
+    command -v swiftc >/dev/null 2>&1 && ok "Swift compiler (macOS native backend)" || warn "Swift compiler missing: run xcode-select --install"
+    command -v git >/dev/null 2>&1 && ok "git" || warn "git missing"
+    return 0
+  fi
   command -v python3 >/dev/null 2>&1 || PY_OK=0
   if [ "$PY_OK" = 1 ]; then
     python3 -c 'import gi; gi.require_version("Gtk","3.0")' >/dev/null 2>&1 || GI_OK=0
@@ -411,6 +417,10 @@ choose_source() {
 supports() { grep -q -- "$1" "$DEST/scripts/install.sh" 2>/dev/null; }
 
 maybe_install_deps() {
+  if [ "$(uname -s)" = Darwin ]; then
+    warn "macOS uses AppKit, not GTK or gtk-layer-shell; skipping Linux dependencies."
+    return 0
+  fi
   local want=0
   if [ "$FORCE_DEPS" = 1 ] || [ "${GLASSDOCK_INSTALL_DEPS:-}" = y ] || [ "${GLASSDOCK_INSTALL_DEPS:-}" = Y ]; then want=1
   elif deps_missing; then
@@ -457,6 +467,7 @@ run_installer() {
 
 restart_dock() {
   command -v "$BIN/glassdock" >/dev/null 2>&1 || [ -x "$BIN/glassdock" ] || return 0
+  if [ "$(uname -s)" = Darwin ]; then return 0; fi
   if dock_running; then
     if confirm "GlassDock is running. Restart it to load the update?" y; then
       if [ -x "$BIN/glassdock-ctl" ]; then run "$BIN/glassdock-ctl" quit >/dev/null 2>&1 || true; else run pkill -u "$(id -u)" -f 'glassdock\.dock' || true; fi
