@@ -11,7 +11,7 @@
 # Settings -> Behavior ("Only auto-start in these sessions/WMs", default: sway).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 APP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 CONF_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -38,6 +38,29 @@ if [ "$(id -u)" -eq 0 ] && [ -z "${GLASSDOCK_ALLOW_ROOT:-}" ]; then
 fi
 
 chmod +x "$ROOT"/bin/* "$ROOT"/scripts/*.sh "$ROOT"/install.sh 2>/dev/null || true
+
+if [ "$(uname -s)" = Darwin ]; then
+    [ "$DO_DEPS" = 0 ] || echo "macOS uses Xcode Command Line Tools, not gtk-layer-shell."
+    command -v swiftc >/dev/null 2>&1 || { echo "Install Xcode Command Line Tools first: xcode-select --install" >&2; exit 1; }
+    mkdir -p "$ROOT/macos/build" "${XDG_BIN_HOME:-$HOME/.local/bin}" "$HOME/Library/LaunchAgents"
+    swiftc "$ROOT/macos/GlassDock.swift" -o "$ROOT/macos/build/GlassDock" || exit 1
+    ln -sfn "$ROOT/bin/glassdock" "${XDG_BIN_HOME:-$HOME/.local/bin}/glassdock"
+    if [ "$DO_AUTOSTART" = 1 ]; then
+        cat >"$HOME/Library/LaunchAgents/com.mandrusian.glassdock.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>com.mandrusian.glassdock</string>
+<key>ProgramArguments</key><array><string>$ROOT/bin/glassdock</string></array>
+<key>RunAtLoad</key><true/>
+<key>KeepAlive</key><false/>
+</dict></plist>
+PLIST
+    fi
+    echo "Native macOS GlassDock preview installed. Run: $ROOT/bin/glassdock"
+    echo "This preview shows running apps only; Linux settings and plugins are not yet supported."
+    exit 0
+fi
 
 if [ "$DO_DEPS" = 1 ]; then
     "$ROOT/scripts/install-deps.sh"
