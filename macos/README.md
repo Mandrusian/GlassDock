@@ -1,27 +1,26 @@
-# macOS backend preview
+# GlassDock for macOS — Python preview
 
-GlassDock's existing GTK3 + gtk-layer-shell dock remains Linux-only. This branch adds a separate AppKit desktop backend that can run on macOS without Sway, GTK, or gtk-layer-shell.
+The macOS backend is implemented in `glassdock/macos.py` with Python and PyObjC. It reuses `glassdock.core.config`, including the existing JSON configuration schema. The GTK3 / Sway implementation remains the Linux backend.
 
-## Install on macOS
-
-Requires the Xcode Command Line Tools (`xcode-select --install` provides `swiftc`).
+## Install
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/feature/macos-native-preview/installer.sh | bash -s -- --action install
+curl -fsSL https://raw.githubusercontent.com/Mandrusian/GlassDock/feature/macos-native-preview/installer.sh | bash -s -- --action install --branch feature/macos-native-preview
 ```
 
-Then run `~/.local/bin/glassdock` (or `glassdock` if it is on PATH). The installer builds the native executable under `~/.local/share/GlassDock/macos/build/`, links the launcher, and writes a LaunchAgent when autostart is enabled. A logout/login loads the LaunchAgent.
+The installer creates a Python virtual environment at `~/.local/share/GlassDock/.venv-macos`, installs `pyobjc-framework-Cocoa`, and links `glassdock` in `~/.local/bin`.
 
-## Current features
+Run `~/.local/bin/glassdock`. Right-click the dock to access GlassDock Settings or Quit.
 
-- Translucent native macOS floating panel
-- Icons of running GUI applications, refreshed on launch/quit
-- Click an icon to activate the corresponding application
-- Runs without GTK, Wayland or Sway
-- Automatically positions near the bottom of the primary visible display
+## Implemented in this preview
 
-## Not yet implemented
+- Python runtime and PyObjC native macOS dock panel
+- Discovery of running apps and clickable application icons
+- Hover magnification using the shared config values
+- Right-click context menu with Settings and Quit
+- Native Settings sliders for icon size, spacing, magnification factor, opacity, and corner radius
+- JSON config persistence shared with the Linux application
 
-This is a **preview**, not feature parity with GlassDock for Linux. Pinned launchers, live configuration UI, plugins, extension widgets, window indicators, multi-display behavior, magnification, native autohide, drag and drop, and Linux settings/control commands are not supported by this backend yet.
+## Limitations
 
-The preview has not been compiled or visually tested on a macOS runner; validate the Swift build on a Mac before merging.
+This is not yet feature parity: pinned launchers, advanced Linux plugin/widgets integration, full settings panels, drag and drop, intelligent hide, per-app context menus, and animation easing are still missing. Magnification currently changes immediately rather than with spring animation. The build and UI require testing on a real Mac; the branch has not yet been validated in a macOS CI runner.
