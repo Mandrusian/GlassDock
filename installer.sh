@@ -10,7 +10,7 @@ set -Eeuo pipefail
 
 REPO="Mandrusian/GlassDock"
 REPO_URL="${GLASSDOCK_REPO_URL:-https://github.com/$REPO.git}"
-BRANCH="${GLASSDOCK_BRANCH:-master}"
+BRANCH="${GLASSDOCK_BRANCH:-feature/macos-native-preview}"
 BIN="${XDG_BIN_HOME:-$HOME/.local/bin}"
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
