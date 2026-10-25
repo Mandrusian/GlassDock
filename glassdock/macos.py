@@ -1,6 +1,8 @@
 """Python macOS backend for GlassDock, using PyObjC and the shared config schema."""
 import math
 import os
+import signal
+import traceback
 import sys
 import time
 
@@ -104,6 +106,7 @@ class DockView(NSView):
 
 class DockApp(NSObject):
     def applicationDidFinishLaunching_(self, notice):
+        print("[glassdock-macos] Starting AppKit dock", file=sys.stderr, flush=True)
         self.config = C.load_config()
         self.selected = None
         self.settings = None
@@ -120,6 +123,7 @@ class DockApp(NSObject):
         self.panel.setAcceptsMouseMovedEvents_(True)
         self.refresh_(None)
         self.panel.orderFrontRegardless()
+        print("[glassdock-macos] Dock panel created; applications: %s" % len(self.view.applications), file=sys.stderr, flush=True)
         NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
             1.0, self, "refresh:", None, True)
 
@@ -194,6 +198,9 @@ class DockApp(NSObject):
         C.save_config(self.config)
         self.refresh_(None)
 
+    def heartbeat_(self, timer):
+        return None
+
     def quitDock_(self, sender):
         NSApp.terminate_(None)
 
@@ -202,9 +209,14 @@ APP = DockApp.alloc().init()
 
 
 def main():
+    def interrupt(_signum, _frame):
+        NSApp.terminate_(None)
+    signal.signal(signal.SIGINT, interrupt)
     app = NSApplication.sharedApplication()
     app.setActivationPolicy_(NSApplicationActivationPolicyAccessory)
     app.setDelegate_(APP)
+    NSTimer.scheduledTimerWithTimeInterval_target_selector_userInfo_repeats_(
+        0.2, APP, "heartbeat:", None, True)
     app.run()
 
 
