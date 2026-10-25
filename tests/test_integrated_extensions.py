@@ -189,7 +189,7 @@ class PackagingIntegrationTests(unittest.TestCase):
         self.assertNotIn('Gtk.Label(label="Defaults")', extension_source)
         self.assertNotIn("class ExtensionPreferencesPage", extension_source)
         self.assertNotIn("self.notebook = Gtk.Notebook()", extension_source)
-        self.assertIn("self._open_preferences", extension_source)
+        self.assertIn("def _open_preferences(", extension_source)
         self.assertNotIn('groups.append((extension_settings, "Widgets & Extensions"))', settings_source)
 
     def test_builtin_plugin_settings_are_managed_alongside_user_plugins(self):
