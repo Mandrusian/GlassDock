@@ -192,20 +192,32 @@ class PackagingIntegrationTests(unittest.TestCase):
         self.assertIn("self._open_preferences", extension_source)
         self.assertNotIn('groups.append((extension_settings, "Widgets & Extensions"))', settings_source)
 
-    def test_builtin_plugin_settings_are_managed_alongside_user_plugins(self):
+    def test_plugins_page_treats_every_plugin_alike_and_keeps_features_separate(self):
         source = (self.ROOT / "glassdock" / "extension_settings.py").read_text(encoding="utf-8")
-        for label in ("Clock & Calendar", "Music Controls", "Folder Menus", "Item Badges", "Plugin Loading"):
-            self.assertIn(label, source)
-        self.assertNotIn('self._add_section("FEATURE PREFERENCES")', source)
-        self.assertIn('S.label("INSTALLED PLUGINS"', source)
-        self.assertIn('self.body.pack_start(S.label("INSTALLED PLUGINS", "md-group-title")', source)
-        self.assertIn("self._builtin_plugin_card", source)
-        self.assertIn("self._user_plugin_card", source)
-        self.assertIn("self.on_builtin_toggle", source)
+        # Built-in features (clock, music, folders, badges) are not plugins and no longer masquerade as such.
+        self.assertNotIn("_builtin_plugin_card", source)
+        self.assertNotIn('"Built-in"', source)
+        self.assertIn("FEATURE_GROUPS = PREFERENCE_GROUPS[:4]", source)
+        self.assertIn('self._add_section("BUILT-IN FEATURES")', source)
+        # One card design for all plugins; origin is only a label.
+        self.assertIn("self._plugin_card", source)
+        self.assertNotIn("_user_plugin_card", source)
+        self.assertIn("P.sort_key(", source)
+        self.assertIn('S.label("INSTALLED PLUGINS", "md-group-title")', source)
         self.assertIn("def import_plugin(self, *_):", source)
         self.assertIn("Gtk.FileChooserNative", source)
         self.assertIn("os.replace(temporary, destination)", source)
         self.assertIn("if page_class is PluginsPage else page_class(self.data)", source)
+
+    def test_plugin_store_is_wired_to_the_mandrusia_directory(self):
+        source = (self.ROOT / "glassdock" / "extension_settings.py").read_text(encoding="utf-8")
+        self.assertIn("class PluginStoreDialog", source)
+        self.assertIn('"Browse plugin store…"', source)
+        self.assertIn("PS.list_plugins(url)", source)
+        self.assertIn("PS.download(entry, target)", source)
+        self.assertIn("Plugin store offline", source)
+        store = (self.ROOT / "glassdock" / "plugin_store.py").read_text(encoding="utf-8")
+        self.assertIn('DEFAULT_URL = "https://plugin.mandrusia.tech"', store)
 
     def test_feature_preferences_open_focused_popups(self):
         source = (self.ROOT / "glassdock" / "extension_settings.py").read_text(encoding="utf-8")

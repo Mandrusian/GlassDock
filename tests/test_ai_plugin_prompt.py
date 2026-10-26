@@ -13,7 +13,7 @@ class AIPluginPromptTests(unittest.TestCase):
         self.assertIn('S.text_button("Import plugin…", self.import_plugin', source)
         self.assertIn('Gtk.Button(label="Copy AI plugin prompt…")', source)
         self.assertIn('compile(code, source, "exec")', source)
-        self.assertIn('self.data["plugins"][module] = {"enabled": False, "config": {}}', source)
+        self.assertIn('self.data["plugins"][module] = {"enabled": False, "config": {}, "origin": "imported"}', source)
         self.assertIn('S.label("INSTALLED PLUGINS"', source)
         self.assertIn('dialog.add_button("Copy prompt", Gtk.ResponseType.APPLY)', source)
         self.assertIn("clipboard.set_text", source)

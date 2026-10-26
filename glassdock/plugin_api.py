@@ -113,6 +113,83 @@ class PluginInstance:
             return default
 
 
+class _LegacyStats:
+    """Maps the old JSON-plugin stats object onto the current StatsView."""
+    def __init__(self, stats):
+        self._s = stats
+
+    def record_open(self, key):          # the dock records launches itself now
+        pass
+
+    def usage_count(self, key):
+        return self._s.usage(key)["count"]
+
+    def last_opened(self, key):
+        return self._s.usage(key)["last_opened"] or None
+
+    def cpu_percent(self):
+        return self._s.cpu()
+
+
+class _LegacyAdapter(PluginBase):
+    """Runs old-style modules (``PLUGIN = Obj()`` with render() -> {"label", "icon"}) on the one current runtime."""
+    _obj = None
+
+    def on_load(self):
+        self._obj.on_load({"stats": _LegacyStats(self.ctx.stats), "config": dict(self.ctx._config)})
+        self._label = self.ctx.name
+
+    def on_tick(self):
+        self._obj.on_tick(self.ctx.stats.now())
+        out = self._obj.render({})
+        if isinstance(out, dict) and isinstance(out.get("label"), str):
+            self._label = out["label"][:40]
+        self.ctx.redraw()
+
+    def render(self, cr, w, h):
+        cr.set_source_rgba(*self.ctx.colors["fg"])
+        cr.select_font_face("Sans", 0, 1)
+        size = w * (0.30 if len(self._label) <= 5 else 0.20)
+        cr.set_font_size(size)
+        ext = cr.text_extents(self._label)
+        cr.move_to(w / 2 - ext.width / 2 - ext.x_bearing, h / 2 + ext.height / 2)
+        cr.show_text(self._label)
+
+    def on_click(self, button):
+        result = self._obj.on_click(None)
+        if isinstance(result, dict) and isinstance(result.get("message"), str):
+            return [result["message"]]
+        return None
+
+    def tooltip(self):
+        return self._label
+
+
+def _legacy_class(name, obj):
+    """Wrap an old-style PLUGIN object, or return None when it does not look like one."""
+    needed = ("on_load", "on_click", "render", "on_tick", "config_schema")
+    if any(not callable(getattr(obj, n, None)) for n in needed):
+        return None
+    conf = {}
+    for key, spec in (obj.config_schema() or {}).items():
+        default = spec.get("default") if isinstance(spec, dict) else None
+        typ = "bool" if isinstance(default, bool) else "int" if isinstance(default, int) else \
+            "float" if isinstance(default, float) else "str"
+        entry = {"type": typ, "default": default if default is not None else "", "label": key.replace("_", " ").capitalize()}
+        if typ in ("int", "float"):
+            entry.update(min=min(0, default), max=max(100, default * 10))
+        conf[key] = entry
+    return type("Legacy_" + name, (_LegacyAdapter,), {"NAME": getattr(obj, "NAME", name), "CONFIG": conf, "_obj": obj})
+
+
+def sort_key(name, origin):
+    """List order for the Plugins page: plugins you installed or wrote first, bundled examples after.
+
+    Origin only decides grouping; every plugin gets the same card, switch and controls.
+    """
+    return (origin == "Bundled", name.casefold())
+
+
 def discover(dirs, allowlist=None):
     """Load only explicitly enabled plugin modules.
 
@@ -157,6 +234,10 @@ def discover(dirs, allowlist=None):
             candidates = [value for value in vars(mod).values()
                           if isinstance(value, type) and issubclass(value, PluginBase)
                           and value is not PluginBase and value.__module__ == mod.__name__]
+            if not candidates and getattr(mod, "PLUGIN", None) is not None:
+                legacy = _legacy_class(name, mod.PLUGIN)
+                if legacy is not None:
+                    candidates = [legacy]
             if len(candidates) != 1:
                 raise ValueError("expected exactly one PluginBase subclass; found %d" % len(candidates))
             cls = candidates[0]

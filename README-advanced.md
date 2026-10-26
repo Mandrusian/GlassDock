@@ -247,3 +247,8 @@ MIT. See [`LICENSE`](LICENSE). Runtime dependencies are provided by your distrib
 ## Extras
 
 - [GlassIcon Studio](extras/GlassIcon/README.md) — change icon themes, application launcher icons, and file-manager icons.
+
+
+## Plugins
+
+GlassDock plugins are single Python files managed from Settings → Extensions. Bundled, imported, store-installed and self-written plugins are treated identically. See [docs/plugins.md](docs/plugins.md) for the API, the AI prompt and the plugin-store file layout (default store: `https://plugin.mandrusia.tech`).

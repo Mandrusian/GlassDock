@@ -8,6 +8,7 @@ Contains tabbed controls for advanced widgets, fan folders, built-in icon overri
 import os
 import re
 import tempfile
+import threading
 
 import gi
 
@@ -17,6 +18,7 @@ from gi.repository import Gdk, GLib, Gtk  # noqa: E402
 
 from . import extras_store as X  # noqa: E402
 from . import plugin_api as P  # noqa: E402
+from . import plugin_store as PS  # noqa: E402
 from . import settings as S  # noqa: E402
 from .widgets import LABELS, WIDGET_TYPES  # noqa: E402
 
@@ -289,8 +291,8 @@ class PluginsPage(BasePage):
     def __init__(self, data=None, settings_store=None, settings_rows=None):
         super().__init__(
             "Plugins",
-            "Built-in integrations and imported Python plugins live together here. "
-            "Importing never executes plugin code; review a module before enabling it.",
+            "Every plugin is listed and managed the same way, whether bundled, imported, from the store or written "
+            "by you. Importing or installing never runs a plugin; only enabling does.",
             data=data,
         )
         self.settings_store = settings_store
@@ -332,124 +334,123 @@ class PluginsPage(BasePage):
         finally:
             dialog.destroy()
 
-    def fill(self):
-        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        actions.pack_start(S.text_button("Import plugin…", self.import_plugin, suggested=True), False, False, 0)
-        actions.pack_start(S.text_button("Copy AI plugin prompt…", self.show_ai_prompt), False, False, 0)
-        self.body.pack_start(self.card("Plugin tools", actions), False, False, 0)
+    # ---- origin / discovery -------------------------------------------------
+    def _bundled_dir(self):
+        from .dock_extensions import PLUGIN_DIRS
+        return os.path.abspath(PLUGIN_DIRS[0])
 
-        warning = S.label(
-            "Python plugins are trusted code, not a security sandbox. Imported modules stay disabled "
-            "until you explicitly enable them.",
-            "md-page-sub", wrap=True)
-        self.body.pack_start(self.card("Security", warning), False, False, 0)
+    def _all_plugin_files(self, config):
+        """{name: (path, origin)} for every plugin module on disk. Discovery only lists file names; it never
+        imports anything, so disabled plugins stay unexecuted. Later directories win, like the loader."""
+        from .dock_extensions import plugin_search_dirs
+        bundled, user = self._bundled_dir(), os.path.abspath(X.USER_PLUGIN_DIR)
+        found = {}
+        for directory in plugin_search_dirs(config):
+            try:
+                names = sorted(os.listdir(directory))
+            except OSError:
+                continue
+            for fn in names:
+                if fn.endswith(".py") and not fn.startswith("_") and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", fn[:-3]):
+                    origin = "Bundled" if directory == bundled else ("Installed" if directory == user else "Custom folder")
+                    found[fn[:-3]] = (os.path.join(directory, fn), origin)
+        return found
+
+    def fill(self):
+        tools = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        tools.pack_start(S.text_button("Browse plugin store…", self.open_store, suggested=True), False, False, 0)
+        tools.pack_start(S.text_button("Import plugin…", self.import_plugin), False, False, 0)
+        prompt = Gtk.Button(label="Copy AI plugin prompt…")
+        prompt.connect("clicked", self.show_ai_prompt)
+        tools.pack_start(prompt, False, False, 0)
+        tools.pack_end(S.text_button("Loading settings…", self.show_loading_settings), False, False, 0)
+        self.body.pack_start(self.card("Plugin tools", tools), False, False, 0)
+
+        self.body.pack_start(S.label(
+            "Plugins are ordinary Python code running as your user, not a sandbox. Anything you import or install "
+            "starts disabled; read it before you enable it.", "md-page-sub", wrap=True), False, False, 0)
         self.body.pack_start(S.label("INSTALLED PLUGINS", "md-group-title"), False, False, 0)
 
-        for title, description, keys, icon, enable_key in PREFERENCE_GROUPS:
-            self._builtin_plugin_card(title, description, keys, icon, enable_key)
-
-        from .dock_extensions import plugin_search_dirs
         config = S.C.load_config()
         loader_enabled = (self.settings_store.get("extensions.plugins_enabled")
                           if self.settings_store is not None
                           else bool(S.C.get_path(config, "extensions.plugins_enabled")))
-        enabled = [
-            name for name, conf in self.data["plugins"].items()
-            if isinstance(conf, dict) and conf.get("enabled") is True
-        ] if loader_enabled else []
+        files = self._all_plugin_files(config)
+        for name in files:                                    # every module on disk is listed, disabled by default
+            self.data["plugins"].setdefault(name, {"enabled": False, "config": {}})
+        enabled = [n for n, c in self.data["plugins"].items()
+                   if isinstance(c, dict) and c.get("enabled") is True and n in files] if loader_enabled else []
+        from .dock_extensions import plugin_search_dirs
         classes, errors = P.discover(plugin_search_dirs(config), allowlist=enabled)
 
-        if not self.data["plugins"]:
+        names = sorted(self.data["plugins"], key=lambda n: P.sort_key(n, files.get(n, ("", "Missing"))[1]))
+        if not names:
             self.body.pack_start(S.label(
-                "No user plugins imported yet. Use Import plugin… to add a .py module; it will be "
-                "registered here disabled until you enable it.",
+                "No plugins yet. Browse the store, import a .py file, or ask an AI to write one with the prompt above.",
                 "md-empty", wrap=True), False, False, 0)
+        for name in names:
+            path, origin = files.get(name, ("", "Missing"))
+            self._plugin_card(name, self.data["plugins"][name], classes.get(name), errors.get(name),
+                              loader_enabled, origin, path)
 
-        for name, conf in sorted(self.data["plugins"].items()):
-            self._user_plugin_card(name, conf, classes.get(name), errors.get(name), loader_enabled)
+    def open_store(self, *_):
+        PluginStoreDialog.open(self.get_toplevel(), self)
 
-    def _builtin_plugin_card(self, title, description, keys, icon, enable_key):
-        inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        row.pack_start(S.icon_image((icon, "applications-utilities-symbolic"), Gtk.IconSize.BUTTON),
-                       False, False, 0)
-        row.pack_start(S.label(title, "md-row-title"), True, True, 0)
-        row.pack_end(S.label("Built-in", "md-pill"), False, False, 0)
-        inner.pack_start(row, False, False, 0)
-        inner.pack_start(S.label(description, "md-row-help", wrap=True), False, False, 0)
-
-        switch_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        switch_row.pack_start(S.label("Enabled", "md-row-title"), True, True, 0)
-        active = self.settings_store.get(enable_key) if self.settings_store is not None else True
-        switch = Gtk.Switch(active=bool(active), valign=Gtk.Align.CENTER)
-        switch.set_sensitive(self.settings_store is not None)
-        switch.connect("notify::active", self.on_builtin_toggle, enable_key)
-        switch_row.pack_end(switch, False, False, 0)
-        inner.pack_start(switch_row, False, False, 0)
-
-        action_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
-        action_row.set_halign(Gtk.Align.END)
-        configure = S.text_button(
-            "Configure…",
-            lambda *_: self.show_builtin_settings(title, description, keys),
-            suggested=True)
-        action_row.pack_end(configure, False, False, 0)
-        inner.pack_start(action_row, False, False, 0)
-        self.body.pack_start(self.card(title + " · Built-in", inner), False, False, 0)
-
-    def show_builtin_settings(self, title, description, keys):
+    def show_loading_settings(self, *_):
+        title, description, keys, _icon, _enable = PLUGIN_LOADING_GROUP
         if self.settings_store is None:
             S.message(self.get_toplevel(), "Settings unavailable",
-                      "Open Plugins from the GlassDock Settings app to edit these defaults.")
+                      "Open Plugins from the GlassDock Settings app to edit loading options.")
             return
-        ExtensionSettingsDialog.open(
-            self.get_toplevel(), self.settings_store, self.settings_rows,
-            title, description, keys)
+        ExtensionSettingsDialog.open(self.get_toplevel(), self.settings_store, self.settings_rows,
+                                     title, description, keys)
         GLib.idle_add(self.rebuild)
 
-    def on_builtin_toggle(self, switch, _prop, key):
-        if self.settings_store is None:
-            return
-        self.settings_store.set(key, switch.get_active())
-        GLib.idle_add(self.rebuild)
-
-    def _user_plugin_card(self, name, conf, cls, error, loader_enabled):
+    def _plugin_card(self, name, conf, cls, error, loader_enabled, origin, path):
+        """One card design for every plugin, whoever wrote it. Origin is a label, never a rank."""
         inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         title = getattr(cls, "NAME", name) if cls is not None else name
         header.pack_start(S.label(title, "md-row-title", wrap=True), True, True, 0)
-        header.pack_end(S.label("User plugin", "md-pill"), False, False, 0)
+        if conf.get("origin") == "store" and origin == "Installed":
+            origin = "From store"
+        header.pack_end(S.label(origin, "md-pill"), False, False, 0)
+        if conf.get("version"):
+            header.pack_end(S.label("v" + conf["version"], "md-pill"), False, False, 0)
         inner.pack_start(header, False, False, 0)
 
         enabled = bool(conf.get("enabled"))
         if cls is not None:
             summary = "Module: %s" % name
             permissions = list(getattr(cls, "PERMISSIONS", []) or [])
-            if permissions:
-                summary += "  ·  Permissions: " + ", ".join(permissions)
+            summary += "  ·  Permissions: " + (", ".join(permissions) if permissions else "none")
             inner.pack_start(S.label(summary, "md-row-help", wrap=True), False, False, 0)
         elif error:
             inner.pack_start(S.label("Plugin error: " + error, "md-mono", wrap=True, selectable=True),
                              False, False, 0)
+        elif not path:
+            inner.pack_start(S.label("The module file is missing from the plugin folders.", "md-row-help", wrap=True),
+                             False, False, 0)
         elif enabled and not loader_enabled:
-            inner.pack_start(S.label("Enabled per-plugin; plugin loading is paused globally.",
-                                     "md-row-help", wrap=True), False, False, 0)
-        elif enabled:
-            inner.pack_start(S.label("Module is missing from the configured plugin directories.",
+            inner.pack_start(S.label("Enabled, but plugin loading is switched off in Loading settings.",
                                      "md-row-help", wrap=True), False, False, 0)
         else:
-            inner.pack_start(S.label("Imported and disabled. Enable it only after reviewing its source.",
+            inner.pack_start(S.label("Disabled and not loaded. Read the source before enabling it.",
                                      "md-row-help", wrap=True), False, False, 0)
 
         enabled_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         enabled_row.pack_start(S.label("Enabled", "md-row-title"), True, True, 0)
         switch = Gtk.Switch(active=enabled, valign=Gtk.Align.CENTER)
+        switch.set_sensitive(bool(path))
         switch.connect("notify::active", self.on_toggle, name)
         enabled_row.pack_end(switch, False, False, 0)
         inner.pack_start(enabled_row, False, False, 0)
 
         actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         actions.set_halign(Gtk.Align.END)
+        if path and origin != "Bundled":
+            actions.pack_start(S.text_button("Remove…", lambda *_: self.remove_plugin(name, path)),
+                               False, False, 0)
         if cls is not None and getattr(cls, "CONFIG", {}):
             actions.pack_start(S.text_button(
                 "Configure…", lambda *_: self.show_plugin_settings(name, cls)), False, False, 0)
@@ -458,6 +459,40 @@ class PluginsPage(BasePage):
                 "Add to dock", lambda *_: self.add_to_dock(name)), False, False, 0)
         inner.pack_start(actions, False, False, 0)
         self.body.pack_start(self.card("%s · %s" % (title, name), inner), False, False, 0)
+
+    def remove_plugin(self, name, path):
+        confirm = Gtk.MessageDialog(
+            transient_for=self.get_toplevel(), modal=True, message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.CANCEL, text="Remove plugin %s?" % name)
+        confirm.format_secondary_text("The file %s is deleted. Its saved settings are kept in case you reinstall it." % path)
+        confirm.add_button("Remove", Gtk.ResponseType.OK)
+        try:
+            response = confirm.run()
+        finally:
+            confirm.destroy()
+        if response != Gtk.ResponseType.OK:
+            return
+        try:
+            os.unlink(path)
+        except OSError as exc:
+            S.message(self.get_toplevel(), "Could not remove plugin", str(exc), Gtk.MessageType.ERROR)
+            return
+        self.data = X.load()
+        conf = self.data["plugins"].setdefault(name, {"enabled": False, "config": {}})
+        conf["enabled"] = False
+        self.save()
+        self.rebuild()
+
+    def register_installed(self, name, version="", origin="store"):
+        """Called by the store dialog after a verified download: registered disabled, never auto-enabled."""
+        self.data = X.load()
+        conf = self.data["plugins"].setdefault(name, {"enabled": False, "config": {}})
+        conf["enabled"] = False
+        conf["origin"] = origin
+        if version:
+            conf["version"] = version
+        self.save()
+        self.rebuild()
 
     def show_plugin_settings(self, name, cls):
         conf = self.data["plugins"].setdefault(name, {"enabled": False, "config": {}})
@@ -583,7 +618,7 @@ class PluginsPage(BasePage):
                     raise
 
             self.data = X.load()
-            self.data["plugins"][module] = {"enabled": False, "config": {}}
+            self.data["plugins"][module] = {"enabled": False, "config": {}, "origin": "imported"}
             self.save()
             self.rebuild()
             S.message(self.get_toplevel(), "Plugin imported",
@@ -653,6 +688,170 @@ PREFERENCE_GROUPS = (
      ("extensions.plugins_enabled", "extensions.plugin_directory", "extensions.plugin_allowlist"),
      "application-x-python-symbolic", "extensions.plugins_enabled"),
 )
+
+FEATURE_GROUPS = PREFERENCE_GROUPS[:4]          # built-in dock features (not plugins)
+PLUGIN_LOADING_GROUP = PREFERENCE_GROUPS[4]     # master switch, directory, allowlist
+
+
+class PluginStoreDialog:
+    """Browse and install plugins from the store (a plain file directory; see plugin_store.py)."""
+
+    @staticmethod
+    def open(parent, page):
+        dialog = Gtk.Dialog(title="Plugin store", transient_for=parent, modal=True)
+        dialog.set_default_size(760, 640)
+        dialog.set_position(Gtk.WindowPosition.CENTER_ON_PARENT)
+        dialog.add_button("Done", Gtk.ResponseType.CLOSE)
+        area = dialog.get_content_area()
+        area.set_spacing(10)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(area, "set_margin_" + side)(16)
+        state = {"alive": True, "busy": False}
+
+        area.pack_start(S.label("Plugin store", "md-page-title"), False, False, 0)
+        area.pack_start(S.label(
+            "Community plugins from a plain file directory. Downloads are checksum-verified when the store provides "
+            "one, compiled but never run, and installed disabled. Enable one only after reading its source.",
+            "md-page-sub", wrap=True), False, False, 0)
+
+        bar = Gtk.Box(spacing=8)
+        url_entry = Gtk.Entry(hexpand=True, placeholder_text=PS.DEFAULT_URL)
+        url_entry.set_text(page.data.get("store_url") or "")
+        refresh = S.text_button("Refresh", lambda *_: load(), suggested=True)
+        bar.pack_start(url_entry, True, True, 0)
+        bar.pack_start(refresh, False, False, 0)
+        area.pack_start(bar, False, False, 0)
+        status = S.label("", "md-row-help", wrap=True)
+        area.pack_start(status, False, False, 0)
+        listing = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        scroll = Gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.set_min_content_height(380)
+        scroll.add(listing)
+        area.pack_start(scroll, True, True, 0)
+
+        def set_status(text):
+            if state["alive"]:
+                status.set_text(text)
+
+        def clear():
+            for child in listing.get_children():
+                listing.remove(child)
+
+        def render(entries):
+            if not state["alive"]:
+                return False
+            clear()
+            installed_dir = page._plugin_target_directory()
+            known = set(page.data["plugins"])
+            if not entries:
+                set_status("The store is reachable but has no plugins yet.")
+            else:
+                set_status("%d plugin%s available." % (len(entries), "" if len(entries) == 1 else "s"))
+            for entry in entries:
+                have = entry["id"] in known and os.path.isfile(os.path.join(installed_dir, entry["id"] + ".py"))
+                listing.pack_start(card_for(entry, have), False, False, 0)
+            listing.show_all()
+            return False
+
+        def failed(message, offline):
+            if not state["alive"]:
+                return False
+            clear()
+            if offline:
+                set_status("Plugin store offline. %s It may not be live yet, or you may be offline. "
+                           "Everything else in GlassDock keeps working; try again later." % message)
+            else:
+                set_status(message)
+            return False
+
+        def load(*_):
+            if state["busy"]:
+                return
+            raw = url_entry.get_text().strip()
+            try:
+                url = PS.normalize_url(raw)
+            except PS.StoreError as exc:
+                set_status(str(exc))
+                return
+            page.data = X.load()
+            page.data["store_url"] = raw if raw else ""
+            page.save()
+            state["busy"] = True
+            set_status("Contacting %s …" % url)
+
+            def work():
+                try:
+                    entries = PS.list_plugins(url)
+                    GLib.idle_add(render, entries)
+                except PS.StoreOffline as exc:
+                    GLib.idle_add(failed, str(exc), True)
+                except PS.StoreError as exc:
+                    GLib.idle_add(failed, str(exc), False)
+                except Exception as exc:                       # never let a thread die silently
+                    GLib.idle_add(failed, "Unexpected store error: %s" % exc, False)
+                finally:
+                    state["busy"] = False
+            threading.Thread(target=work, daemon=True).start()
+
+        def card_for(entry, have):
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            head = Gtk.Box(spacing=8)
+            head.pack_start(S.label(entry["name"], "md-row-title", wrap=True), True, True, 0)
+            if entry["author"]:
+                head.pack_end(S.label("by " + entry["author"], "md-pill"), False, False, 0)
+            if entry["version"]:
+                head.pack_end(S.label("v" + entry["version"], "md-pill"), False, False, 0)
+            inner.pack_start(head, False, False, 0)
+            if entry["description"]:
+                inner.pack_start(S.label(entry["description"], "md-row-help", wrap=True), False, False, 0)
+            perms = ", ".join(entry["permissions"]) or "none"
+            checksum = "checksum provided" if entry["sha256"] else "no checksum from store"
+            inner.pack_start(S.label("Permissions: %s  ·  %s" % (perms, checksum), "md-row-help", wrap=True),
+                             False, False, 0)
+            button = S.text_button("Installed" if have else "Install", lambda b, e=entry: install(b, e),
+                                   suggested=not have)
+            button.set_sensitive(not have)
+            button.set_halign(Gtk.Align.END)
+            inner.pack_start(button, False, False, 0)
+            return page.card(None, inner)
+
+        def install(button, entry):
+            button.set_sensitive(False)
+            button.set_label("Installing…")
+            target = page._plugin_target_directory()
+
+            def work():
+                try:
+                    PS.download(entry, target)
+                except PS.StoreError as exc:
+                    GLib.idle_add(done, button, entry, str(exc))
+                except Exception as exc:
+                    GLib.idle_add(done, button, entry, "Unexpected error: %s" % exc)
+                else:
+                    GLib.idle_add(done, button, entry, None)
+            threading.Thread(target=work, daemon=True).start()
+
+        def done(button, entry, error):
+            if not state["alive"]:
+                return False
+            if error:
+                button.set_label("Install")
+                button.set_sensitive(True)
+                S.message(dialog, "Install failed", error, Gtk.MessageType.ERROR)
+            else:
+                button.set_label("Installed")
+                page.register_installed(entry["id"], entry["version"], "store")
+                set_status("%s installed (disabled). Enable it from the Plugins list when you have reviewed it." % entry["name"])
+            return False
+
+        dialog.show_all()
+        GLib.idle_add(load)
+        try:
+            dialog.run()
+        finally:
+            state["alive"] = False
+            dialog.destroy()
 
 
 class ExtensionSettingsDialog:
@@ -756,6 +955,12 @@ class ExtensionsPanel(Gtk.Box):
             grid.attach(card, index % 2, index // 2, 1, 1)
         self.pack_start(grid, False, False, 0)
 
+        self._add_section("BUILT-IN FEATURES")
+        self.pack_start(S.label(
+            "Part of GlassDock itself, not plugins. They have their own switches and defaults.",
+            "md-row-help", wrap=True), False, False, 0)
+        for title, description, keys, glyph, enable_key in FEATURE_GROUPS:
+            self.pack_start(self._feature_row(title, description, keys, glyph, enable_key), False, False, 0)
 
         self._refresh_summaries()
 
@@ -818,6 +1023,31 @@ class ExtensionsPanel(Gtk.Box):
             dialog.destroy()
         self.data = X.load()
         self._refresh_summaries()
+
+    def _feature_row(self, title, description, keys, glyph, enable_key):
+        outer = S.style(Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12), "md-card")
+        inner = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(inner, "set_margin_" + side)(12)
+        inner.pack_start(S.icon_image((glyph, "applications-utilities-symbolic"), Gtk.IconSize.LARGE_TOOLBAR),
+                         False, False, 0)
+        text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        text.pack_start(S.label(title, "md-row-title"), False, False, 0)
+        text.pack_start(S.label(description, "md-row-help", wrap=True), False, False, 0)
+        inner.pack_start(text, True, True, 0)
+        active = self.settings_store.get(enable_key) if self.settings_store is not None else True
+        switch = Gtk.Switch(active=bool(active), valign=Gtk.Align.CENTER)
+        switch.set_sensitive(self.settings_store is not None)
+        switch.connect("notify::active", self._on_feature_toggle, enable_key)
+        inner.pack_end(switch, False, False, 0)
+        inner.pack_end(S.text_button("Configure…", lambda *_: self._open_preferences(title, description, keys)),
+                       False, False, 0)
+        outer.pack_start(inner, True, True, 0)
+        return outer
+
+    def _on_feature_toggle(self, switch, _prop, key):
+        if self.settings_store is not None:
+            self.settings_store.set(key, switch.get_active())
 
     def _open_preferences(self, title, description, keys):
         if self.settings_store is None:

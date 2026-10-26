@@ -51,7 +51,7 @@ FOLDER_SCHEMA = {
     "radius": {"type": "int", "default": 0, "min": 0, "max": 400, "label": "Fan radius px (0 = auto)"},
 }
 ICON_KEYS = {"apps": "Apps launcher", "trash": "Trash (empty)", "trash_full": "Trash (full)"}
-DEFAULTS = {"extras": [], "icon_overrides": {}, "folders": {}, "plugins": {}, "widgets": {}}
+DEFAULTS = {"extras": [], "icon_overrides": {}, "folders": {}, "plugins": {}, "widgets": {}, "store_url": ""}
 _ID_RE = re.compile(r"[A-Za-z0-9_-]{1,80}\Z")
 _PLUGIN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,63}\Z")
 _COLOR_RE = re.compile(r"#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\Z")
@@ -198,7 +198,14 @@ def _normalize(raw):
             "enabled": conf.get("enabled") is True,
             "config": safe_config if isinstance(safe_config, dict) else {},
         }
+        # Where a plugin came from; purely informational (never affects trust or ordering rules).
+        if conf.get("origin") in ("store", "imported"):
+            plugins[name]["origin"] = conf["origin"]
+        if isinstance(conf.get("version"), str):
+            plugins[name]["version"] = conf["version"][:32]
     data["plugins"] = plugins
+    url = raw.get("store_url") if isinstance(raw, dict) else ""
+    data["store_url"] = url.strip()[:300] if isinstance(url, str) and url.strip().startswith(("https://", "http://")) else ""
     return data
 
 
