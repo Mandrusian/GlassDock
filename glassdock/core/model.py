@@ -29,6 +29,8 @@ class DockItem:
     badge_count: int = 0
     extension_text: str = ""       # dynamic hover label
     pinned: bool = True
+    side: str = ""                 # "right": widget/plugin in the right-hand section
+    custom_icon: bool = False      # a user-chosen icon replaces the built-in glyph
     windows: list = field(default_factory=list)
     cfg_index: int = -1            # index into config items (pinned items only)
 
@@ -112,8 +114,8 @@ def build_items(cfg_items, entries, windows, show_unpinned=True):
         elif t == "special":
             info = SPECIAL_KINDS[spec["kind"]]
             items.append(DockItem(key="special:%s" % spec["kind"], kind="special",
-                                  name=info["name"], icon=info["icon"],
-                                  special=spec["kind"], badge_count=spec.get("badge_count", 0), cfg_index=idx))
+                                  name=spec.get("name") or info["name"], icon=spec.get("icon") or info["icon"],
+                                  custom_icon=bool(spec.get("icon")), special=spec["kind"], badge_count=spec.get("badge_count", 0), cfg_index=idx))
             idents.append(None)
         elif t == "app":
             entry = find_entry(entries, spec["id"])
@@ -154,6 +156,11 @@ def build_items(cfg_items, entries, windows, show_unpinned=True):
                                   extension=name, icon=spec.get("icon", ""),
                                   badge_count=spec.get("badge_count", 0), cfg_index=idx))
             idents.append(None)
+
+    for it_ in items:  # widgets and plugins can live in the right-hand section
+        if it_.kind in ("widget", "plugin") and 0 <= it_.cfg_index < len(cfg_items) \
+                and cfg_items[it_.cfg_index].get("side") == "right":
+            it_.side = "right"
 
     unclaimed = []
     for win in windows:
@@ -199,6 +206,12 @@ def build_items(cfg_items, entries, windows, show_unpinned=True):
             if items and items[-1].kind != "separator":
                 items.append(DockItem(key="sep:run", kind="separator", pinned=False))
             items.extend(groups[k] for k in order)
+    right_ = [i for i in items if i.side == "right"]
+    if right_:  # right-side widgets come after the running apps, behind their own divider
+        items = [i for i in items if i.side != "right"]
+        if items and items[-1].kind != "separator":
+            items.append(DockItem(key="sep:right", kind="separator", pinned=False))
+        items.extend(right_)
     return items
 
 

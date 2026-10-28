@@ -33,6 +33,7 @@ import cairo  # noqa: E402
 from . import __version__  # noqa: E402
 from .core import config as C  # noqa: E402
 from .core import control, extensions as E, model as M, sway  # noqa: E402
+from .core import dragzones as DZ  # noqa: E402
 from .core.envutil import child_env  # noqa: E402
 from .core.colors import parse_color, with_alpha  # noqa: E402
 from .core.desktop import expand_exec, load_entries  # noqa: E402
@@ -749,7 +750,7 @@ class DockWindow(Gtk.Window):
                 continue
             lift = self.bounce_offset(it.key, now)
             x, y, w, h = M.place(edge, W, H, m, c + lift, s, s)
-            if it.special in ("apps", "trash"):
+            if it.special in ("apps", "trash") and not getattr(it, "custom_icon", False):
                 draw_builtin(cr, it.special, x, y, s, icon_pct)
             elif it.kind == "widget":
                 draw_extension_icon(cr, it.extension, x, y, s, icon_pct)
@@ -814,8 +815,8 @@ class DockWindow(Gtk.Window):
                         cr.set_source_rgba(*col)
                         cr.fill()
 
-        if self.drag is not None:
-            _, lm = self.drop_target(self.drag["pm"], self.drag["key"])
+        if self.drag is not None and self.drag_marker_ok():
+            lm = self.drag_marker_pos()
             mx, my, mw, mh = M.place(edge, W, H, lm - 1.0, geo.c0 + geo.padding + geo.ind_room - off,
                                      2.0, geo.icon)
             cr.set_source_rgba(*parse_color(g("indicators.active_color")))
@@ -842,19 +843,22 @@ class DockWindow(Gtk.Window):
         hi = max(lo, lo + end - d["size"])
         return max(lo, min(hi, d["pm"] - d["grab"]))
 
-    def drop_target(self, pm, key):
-        """-> (config index to insert before or None for 'at the end', marker position)."""
+    def drop_target(self, pm, key, zone=None):
+        """-> (config index to insert before or None for 'at the end', marker position) within a section."""
         geo = self.geo
+        zone = zone or self.zone_at(pm)
         pos, sizes, length, m0 = self.layout()
         base = m0 + geo.padding
         last_end = None
         for i, it in enumerate(self.items):
-            if it.key == key or it.cfg_index < 0:
+            if it.key == key or it.cfg_index < 0 or DZ.item_zone(it) != zone:
                 continue
             start = base + pos[i]
             if pm < start + sizes[i] / 2.0:
                 return it.cfg_index, start - geo.spacing / 2.0
             last_end = start + sizes[i]
+        if last_end is None and zone == "right" and pos:
+            last_end = base + pos[-1] + sizes[-1]
         return None, (last_end if last_end is not None else base) + geo.spacing / 2.0
 
     def update_drag(self, ev):
@@ -866,13 +870,91 @@ class DockWindow(Gtk.Window):
             return
         if self.drag is None:
             it = self.press_item
-            if abs(self.pointer[0] - self.press_m) < 8 or it.cfg_index < 0 or \
+            if abs(self.pointer[0] - self.press_m) < 8 or (it.cfg_index < 0 and it.entry is None and not DZ.is_extra(it)) or \
                     it.kind == "separator" or self.menu_open:
                 return
             self.drag = {"key": it.key, "grab": self.press_grab, "pm": self.pointer[0],
                          "size": self.geo.icon}
         else:
             self.drag["pm"] = self.pointer[0]
+
+    def zone_at(self, pm):
+        """'left' (pinned) or 'right' (running apps and right-side widgets) for a pointer position."""
+        pos, sizes, length, m0 = self.layout()
+        base = m0 + self.geo.padding
+        spans = [(DZ.item_zone(it) == "right", base + pos[i], base + pos[i] + sizes[i]) for i, it in enumerate(self.items)]
+        return DZ.zone_for(pm, spans, self.geo.icon)
+
+    def slot_at(self, pm, key, zone):
+        """-> (how many positioned items of `zone` lie before the pointer, marker position). Skips the dragged item."""
+        geo = self.geo
+        pos, sizes, length, m0 = self.layout()
+        base = m0 + geo.padding
+        count, last_end = 0, None
+        for i, it in enumerate(self.items):
+            if it.key == key or DZ.item_zone(it) != zone or not DZ.is_slot_item(it):
+                continue
+            start = base + pos[i]
+            if pm < start + sizes[i] / 2.0:
+                return count, start - geo.spacing / 2.0
+            count += 1
+            last_end = start + sizes[i]
+        if last_end is None and zone == "right" and pos:
+            last_end = base + pos[-1] + sizes[-1]
+        return count, (last_end if last_end is not None else base) + geo.spacing / 2.0
+
+    def drop_kind(self, cur, zone):
+        """What dropping `cur` in `zone` does: move | pin | unpin | side | extra | none."""
+        if DZ.is_extra(cur):  # a widget or folder from the Extensions system
+            return "extra"
+        if cur.cfg_index < 0:  # a running app that isn't pinned
+            return "pin" if (cur.entry is not None and zone == "left") else "none"
+        if cur.kind in ("widget", "plugin"):
+            return "move" if zone == DZ.item_zone(cur) else "side"
+        if zone == "right":  # only apps unpin by dragging; nothing else is deleted by a slip
+            return "unpin" if cur.kind == "app" else "none"
+        return "move"
+
+    def drag_marker_ok(self):
+        d = self.drag
+        cur = next((i for i in self.items if i.key == d["key"]), None)
+        return cur is not None and self.drop_kind(cur, self.zone_at(d["pm"])) in ("move", "pin", "side", "extra")
+
+    def drag_marker_pos(self):
+        d = self.drag
+        cur = next((i for i in self.items if i.key == d["key"]), None)
+        zone = self.zone_at(d["pm"])
+        if cur is not None and self.drop_kind(cur, zone) == "extra":
+            return self.slot_at(d["pm"], d["key"], zone)[1]
+        return self.drop_target(d["pm"], d["key"], zone)[1]
+
+    def drop_extra(self, cur, pm, zone):
+        host = getattr(self.app, "host", None)
+        if host is None:
+            return
+        count, _ = self.slot_at(pm, cur.key, zone)
+        rest = [i for i in self.items if i.key != cur.key and DZ.item_zone(i) == zone and DZ.is_slot_item(i)]
+        seq = rest[:count] + [cur] + rest[count:]
+        ids = [i.special[2:] for i in seq if DZ.is_extra(i)]
+        if zone == "left":
+            host.move_extra(cur.special[2:], "left", {i.special[2:]: n for n, i in enumerate(seq) if DZ.is_extra(i)}, [])
+        else:
+            host.move_extra(cur.special[2:], "right", {}, ids)
+
+    def drop_item(self, cur, pm, before):
+        zone = self.zone_at(pm)
+        kind = self.drop_kind(cur, zone)
+        if kind == "move":
+            self.app.move_item(cur.cfg_index, before)
+        elif kind == "pin":
+            self.app.pin_at(cur, before)
+        elif kind == "unpin":
+            self.app.unpin(cur)
+            toast("Unpinned %s" % cur.name)
+        elif kind == "side":
+            self.app.set_side(cur, zone, before)
+        elif kind == "extra":
+            self.drop_extra(cur, pm, zone)
 
     def cancel_drag(self):
         self.drag = None
@@ -889,8 +971,8 @@ class DockWindow(Gtk.Window):
         if d is not None:
             before, _ = self.drop_target(pm, d["key"])
             cur = next((i for i in self.items if i.key == d["key"]), None)
-            if cur is not None and cur.cfg_index >= 0:
-                self.app.move_item(cur.cfg_index, before)
+            if cur is not None:
+                self.drop_item(cur, pm, before)
         self.update_targets()
         self.ensure_tick()
         self.queue_draw()
@@ -1049,6 +1131,7 @@ class DockWindow(Gtk.Window):
         elif item is not None and item.kind == "special":
             add("Open", lambda: self.app.activate(item, False, self))
             add("Remove from Dock", lambda: self.app.unpin(item))
+            add("Rename / Change Icon…", lambda: self.app.edit_item(item))  # Trash/Apps can be customized
             sep()
         if item is not None and item.cfg_index >= 0 and item.kind != "separator":
             sep()
@@ -1825,6 +1908,32 @@ class DockApp:
         if 0 <= idx < len(self.cfg["items"]):
             del self.cfg["items"][idx]
             self.save_cfg()
+
+    def pin_at(self, item, before):
+        """Pin a running app at a chosen position (before = config index, or None for the end)."""
+        items = self.cfg["items"]
+        if item.entry is None or any(i.get("type") == "app" and i.get("id") == item.entry.id for i in items):
+            return
+        spec = {"type": "app", "id": item.entry.id}
+        if before is None or not 0 <= before <= len(items):
+            items.append(spec)
+        else:
+            items.insert(before, spec)
+        self.save_cfg()
+
+    def set_side(self, item, zone, before):
+        """Move a widget/plugin into the left or right section, at a position."""
+        items = self.cfg["items"]
+        if not 0 <= item.cfg_index < len(items):
+            return
+        if zone == "right":
+            items[item.cfg_index]["side"] = "right"
+        else:
+            items[item.cfg_index].pop("side", None)
+        new = M.reorder_items(items, item.cfg_index, before)
+        if new is not None:
+            self.cfg["items"] = new
+        self.save_cfg()
 
     def move_item(self, src, before):
         new = M.reorder_items(self.cfg["items"], src, before)

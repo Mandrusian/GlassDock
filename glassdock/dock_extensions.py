@@ -23,6 +23,7 @@ from . import plugin_api as P  # noqa: E402
 from .badges import Badges, draw_badges  # noqa: E402
 from .core import config as C  # noqa: E402
 from .core import model as M  # noqa: E402
+from .core import dragzones as DZ  # noqa: E402
 from .core.colors import parse_color  # noqa: E402
 from .folders import FolderWidget  # noqa: E402
 from .stats import Stats  # noqa: E402
@@ -59,9 +60,9 @@ class WItem(SimpleNamespace):
         return self.widget.tooltip()
 
 
-def make_item(wid, widget):
+def make_item(wid, widget, side=""):
     return WItem(key="x:" + wid, kind="special", special="x:" + wid, icon=None, entry=None, windows=[], running=False,
-                 active=False, urgent=False, pinned=False, cfg_index=-1, argv=None, widget=widget, gd_widget=True)
+                 active=False, urgent=False, pinned=False, cfg_index=-1, argv=None, widget=widget, gd_widget=True, side=side)
 
 
 # ------------------------------------------------------------------ host
@@ -135,6 +136,12 @@ class ExtrasHost:
         if rebuild:
             self.app.rebuild()
 
+    def move_extra(self, wid, side, left_at, right_order):
+        """Persist dragging a widget or folder: its section and exact position (see core/dragzones.py)."""
+        self.data["extras"] = DZ.reorder_extras(self.data["extras"], wid, side, left_at, right_order)
+        X.save(self.data)
+        self.reload()
+
     def inject(self, items):
         """Attach advanced plugin views to normal launcher items and insert configured extras."""
         out = list(items)
@@ -146,18 +153,10 @@ class ExtrasHost:
                     item.widget = widget
                     item.gd_widget = True
 
-        entries = [(entry.get("at"), entry["id"]) for entry in self.data["extras"]
+        entries = [(entry.get("at"), entry["id"], entry.get("side")) for entry in self.data["extras"]
                    if entry.get("id") in self.widgets and entry.get("type") != "plugin"]
-        for at, wid in entries:
-            item = make_item(wid, self.widgets[wid])
-            if isinstance(at, int) and not isinstance(at, bool) and 0 <= at <= len(out):
-                out.insert(at, item)
-            else:
-                # Re-evaluate the trash index after every insertion to keep order stable.
-                trash_i = next((i for i, existing in enumerate(out)
-                                if getattr(existing, "special", None) == "trash"), len(out))
-                out.insert(trash_i, item)
-        return out
+        return DZ.place_extras(out, entries, lambda wid, side: make_item(wid, self.widgets[wid], side),
+                                lambda: M.DockItem(key="sep:right", kind="separator", pinned=False))
 
     # ---- timers / redraw
     def restart_timer(self):

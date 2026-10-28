@@ -314,6 +314,8 @@ def validate_items(items):
         return None
 
     def add(spec, raw):
+        if isinstance(raw, dict) and raw.get("side") == "right" and spec.get("type") in ("widget", "plugin"):
+            spec["side"] = "right"  # lives in the dock's right-hand section
         count = raw.get("badge_count") if isinstance(raw, dict) else None
         if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
             spec["badge_count"] = min(count, 999999)
@@ -346,7 +348,12 @@ def validate_items(items):
             out.append({"type": "separator"})
         elif t == "special":
             if it.get("kind") in SPECIAL_KINDS:
-                add({"type": "special", "kind": it["kind"]}, it)
+                sp_ = {"type": "special", "kind": it["kind"]}
+                for key_, cap_ in (("name", 100), ("icon", 500)):  # optional user overrides
+                    val_ = it.get(key_)
+                    if isinstance(val_, str) and val_.strip():
+                        sp_[key_] = val_.strip()[:cap_]
+                add(sp_, it)
         elif t == "folder":
             path = it.get("path")
             if not isinstance(path, str) or not path.strip():

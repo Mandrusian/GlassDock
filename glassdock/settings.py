@@ -15,6 +15,7 @@ import subprocess
 import sys
 import threading
 import time
+from types import SimpleNamespace
 
 import gi
 
@@ -1245,7 +1246,9 @@ class ItemDialog(Gtk.Dialog):
         super().__init__(title="Customize %s" % entry.name, transient_for=parent, modal=True)
         self.add_buttons("Cancel", Gtk.ResponseType.CANCEL, "Save", Gtk.ResponseType.OK)
         self.set_default_response(Gtk.ResponseType.OK)
-        self.spec_id, self.entry = spec["id"], entry
+        self.spec_type = spec.get("type", "app")
+        self.spec_key = "kind" if self.spec_type == "special" else "id"
+        self.spec_id, self.entry = spec[self.spec_key], entry
         grid = Gtk.Grid(column_spacing=12, row_spacing=10)
         for side in ("start", "end", "top"):
             getattr(grid, "set_margin_" + side)(18)
@@ -1284,7 +1287,7 @@ class ItemDialog(Gtk.Dialog):
 
     def update_preview(self, *_):
         icon = self.icon.get_text().strip() or self.entry.icon
-        self.preview.set_from_gicon(gicon_for(icon, self.entry), Gtk.IconSize.DIALOG)
+        self.preview.set_from_gicon(gicon_for(icon, None if self.spec_type == "special" else self.entry), Gtk.IconSize.DIALOG)
         self.preview.set_pixel_size(64)
 
     def browse(self, *_):
@@ -1293,7 +1296,7 @@ class ItemDialog(Gtk.Dialog):
             self.icon.set_text(dlg.get_filename())
 
     def spec(self):
-        s = {"type": "app", "id": self.spec_id}
+        s = {"type": self.spec_type, self.spec_key: self.spec_id}
         if self.name.get_text().strip():
             s["name"] = self.name.get_text().strip()
         if self.icon.get_text().strip():
@@ -1389,19 +1392,20 @@ class LaunchersPage(Gtk.Box):
             return gicon_for("list-remove-symbolic"), "──  Separator  ──"
         if t == "special":
             info = C.SPECIAL_KINDS[spec["kind"]]
-            return gicon_for(info["icon"]), info["name"] + "  ·  built-in"
+            tag_ = "  ·  customized" if (spec.get("name") or spec.get("icon")) else "  ·  built-in"
+            return gicon_for(spec.get("icon") or info["icon"]), (spec.get("name") or info["name"]) + tag_
         if t == "launcher":
             return gicon_for(spec.get("icon")), spec["name"] + "  ·  custom launcher"
         if t == "widget":
             names = {"clock": "Clock", "calendar": "Calendar", "music": "Music controls"}
             icons = {"clock": "clock", "calendar": "x-office-calendar", "music": "audio-x-generic"}
             kind = spec.get("kind", "")
-            return gicon_for(icons.get(kind, "application-x-executable")), names.get(kind, kind) + "  ·  widget"
+            return gicon_for(icons.get(kind, "application-x-executable")), names.get(kind, kind) + "  ·  widget" + ("  ·  right side" if spec.get("side") == "right" else "")
         if t == "folder":
             name = spec.get("name") or os.path.basename(spec.get("path", "")) or "Folder"
             return gicon_for(spec.get("icon") or "folder"), name + "  ·  folder"
         if t == "plugin":
-            return gicon_for(spec.get("icon") or "application-x-addon-symbolic"), spec.get("name", "Plugin") + "  ·  plugin"
+            return gicon_for(spec.get("icon") or "application-x-addon-symbolic"), spec.get("name", "Plugin") + "  ·  plugin" + ("  ·  right side" if spec.get("side") == "right" else "")
         entry = self.store.entries.get(spec["id"])
         if entry is None:
             return gicon_for("dialog-question-symbolic"), "%s  (not installed)" % spec["id"]
@@ -1426,7 +1430,7 @@ class LaunchersPage(Gtk.Box):
         self.down_btn.set_sensitive(i is not None and i < n - 1)
         self.rm_btn.set_sensitive(i is not None)
         kind = self.current_items()[i]["type"] if i is not None and i < n else None
-        self.edit_btn.set_sensitive(kind in ("app", "launcher"))
+        self.edit_btn.set_sensitive(kind in ("app", "launcher", "special"))
 
     def sync_from_model(self):
         if self.loading:
@@ -1583,6 +1587,9 @@ class LaunchersPage(Gtk.Box):
             dlg = LauncherDialog(self.window, spec)
         elif spec["type"] == "app" and self.store.entries.get(spec["id"]) is not None:
             dlg = ItemDialog(self.window, spec, self.store.entries[spec["id"]])
+        elif spec["type"] == "special" and spec["kind"] in C.SPECIAL_KINDS:
+            info_ = C.SPECIAL_KINDS[spec["kind"]]
+            dlg = ItemDialog(self.window, spec, SimpleNamespace(name=info_["name"], icon=info_["icon"]))
         else:
             return
         if dlg.run() == Gtk.ResponseType.OK:

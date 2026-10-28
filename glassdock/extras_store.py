@@ -146,7 +146,10 @@ def _normalize(raw):
         at = entry.get("at")
         if isinstance(at, bool) or not isinstance(at, int) or at < 0:
             at = None
-        extras.append({"id": wid, "type": kind, "at": at})
+        spec = {"id": wid, "type": kind, "at": at}
+        if entry.get("side") == "right":  # lives in the right-hand section
+            spec["side"], spec["at"] = "right", None
+        extras.append(spec)
         used.add(wid)
     data["extras"] = extras
 
