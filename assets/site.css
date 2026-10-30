@@ -359,3 +359,8 @@ h1 span { color: var(--text-secondary); }
   html { scroll-behavior: auto; }
   .js .scroll-reveal, .js .scroll-reveal.is-visible { opacity: 1; transform: none; transition: none; }
 }
+
+
+/* Keep the wordmark and section titles in the site's sans-serif UI face. */
+.brand, .footer-brand { font-family: var(--font); font-size: 16px; font-weight: 650; letter-spacing: -.025em; }
+.section-heading h2 { font-family: var(--font); font-weight: 600; letter-spacing: -.035em; }
