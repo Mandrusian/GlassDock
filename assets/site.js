@@ -120,7 +120,7 @@
 })();
 
 document.documentElement.classList.add("js");
-const revealTargets = document.querySelectorAll(".hero, .section, .site-footer");
+const revealTargets = document.querySelectorAll(".hero-copy, .hero-art, .section-heading, .feature-item, .install-layout > *, .site-footer > *");
 revealTargets.forEach((target) => target.classList.add("scroll-reveal"));
 if ("IntersectionObserver" in window) {
   const revealObserver = new IntersectionObserver((entries) => {
