@@ -12,6 +12,7 @@ on:
       - "assets/site.css"
       - "assets/site.js"
       - "assets/glassdock.svg"
+      - "assets/mainscreenshots/about.png"
       - ".github/workflows/pages.yml"
   workflow_dispatch:
 
@@ -48,6 +49,8 @@ jobs:
           mkdir -p _site/assets
           cp index.html _site/index.html
           cp assets/site.css assets/site.js assets/glassdock.svg _site/assets/
+          mkdir -p _site/assets/mainscreenshots
+          cp assets/mainscreenshots/about.png _site/assets/mainscreenshots/
           touch _site/.nojekyll
 
       - name: Upload website artifact
