@@ -118,3 +118,17 @@
     });
   }
 })();
+
+document.documentElement.classList.add("js");
+const revealTargets = document.querySelectorAll(".hero, .section, .site-footer");
+revealTargets.forEach((target) => target.classList.add("scroll-reveal"));
+if ("IntersectionObserver" in window) {
+  const revealObserver = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      entry.target.classList.toggle("is-visible", entry.isIntersecting);
+    });
+  }, { threshold: 0.12 });
+  revealTargets.forEach((target) => revealObserver.observe(target));
+} else {
+  revealTargets.forEach((target) => target.classList.add("is-visible"));
+}
