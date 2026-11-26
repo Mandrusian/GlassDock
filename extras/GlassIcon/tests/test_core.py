@@ -1,10 +1,15 @@
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
 from unittest import mock
+
+_EXTRAS_ROOT = str(Path(__file__).resolve().parents[1])
+if _EXTRAS_ROOT not in sys.path:
+    sys.path.insert(0, _EXTRAS_ROOT)
 
 import glassicon_core as core
 
@@ -98,7 +103,7 @@ class GlassIconCoreTests(unittest.TestCase):
             self.assertIsNotNone(sample)
             destination = core.set_application_icon("sample.desktop", image)
             modified = destination.read_text(encoding="utf-8")
-            self.assertIn(f"Icon={image}", modified)
+            self.assertIn(f"Icon={image.resolve()}", modified)
             self.assertIn("[Extra]\nKey=keep", modified)
             self.assertTrue(core.load_state()["application_overrides"]["sample.desktop"]["had_original_user_file"])
             self.assertTrue(core.reset_application_icon("sample.desktop"))
