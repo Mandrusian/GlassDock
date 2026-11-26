@@ -7,11 +7,12 @@
 #                                    (a .tar.gz backup is made first)
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 APP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 CONF_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/glassdock"
 AUTOSTART_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/autostart"
+PLIST="$HOME/Library/LaunchAgents/com.mandrusian.glassdock.plist"
 PURGE=0
 
 for arg in "$@"; do
@@ -23,23 +24,33 @@ for arg in "$@"; do
 done
 
 echo "==> Stopping the dock (if running)"
-"$ROOT/bin/glassdock-ctl" quit >/dev/null 2>&1 || true
-
-echo "==> Removing Sway autostart (if enabled)"
-"$ROOT/scripts/sway-integration.sh" disable-autostart || true
+if [ "$(uname -s)" = Darwin ]; then
+    pkill -u "$(id -u)" -f 'glassdock\.macos' >/dev/null 2>&1 || true
+else
+    "$ROOT/bin/glassdock-ctl" quit >/dev/null 2>&1 || true
+    echo "==> Removing Sway autostart (if enabled)"
+    "$ROOT/scripts/sway-integration.sh" disable-autostart || true
+fi
 
 echo "==> Removing command links that point into $ROOT"
 for cmd in glassdock glassdock-ctl glassdock-settings; do
     target="$BIN_DIR/$cmd"
-    if [ -L "$target" ] && [ "$(readlink -f "$target")" = "$ROOT/bin/$cmd" ]; then
+    if [ -L "$target" ] && [ "$(readlink -f "$target" 2>/dev/null || readlink "$target")" = "$ROOT/bin/$cmd" ]; then
         rm -f "$target"
         echo "  removed $target"
     fi
 done
 
-echo "==> Removing the Settings launcher"
-rm -f "$APP_DIR/glassdock-settings.desktop" "$AUTOSTART_DIR/glassdock.desktop"
-command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APP_DIR" 2>/dev/null || true
+if [ "$(uname -s)" = Darwin ]; then
+    if [ -f "$PLIST" ] && grep -q "$ROOT/bin/glassdock" "$PLIST" 2>/dev/null; then
+        rm -f "$PLIST"
+        echo "  removed $PLIST"
+    fi
+else
+    echo "==> Removing the Settings launcher"
+    rm -f "$APP_DIR/glassdock-settings.desktop" "$AUTOSTART_DIR/glassdock.desktop"
+    command -v update-desktop-database >/dev/null 2>&1 && update-desktop-database "$APP_DIR" 2>/dev/null || true
+fi
 
 if [ "$PURGE" = 1 ] && [ -d "$CONF_DIR" ]; then
     backup="$HOME/glassdock-config-backup-$(date +%Y%m%d-%H%M%S).tar.gz"

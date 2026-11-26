@@ -247,6 +247,8 @@ MIT. See [`LICENSE`](LICENSE). Runtime dependencies are provided by your distrib
 ## Extras
 
 - [GlassIcon Studio](extras/GlassIcon/README.md) — change icon themes, application launcher icons, and file-manager icons.
+- [macOS preview](macos/README.md) — experimental PyObjC AppKit dock backend sharing `config.json`.
+- [X11 support](x11-support/README.md) — experimental EWMH X11 starter backend for i3 and Termux:X11 (`installer.sh` and `scripts/install-deps.sh` also detect Termux and use `pkg` without `sudo`).
 
 
 ## Plugins
