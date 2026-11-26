@@ -17,3 +17,5 @@ jobs:
           python-version: "3.11"
       - name: Run application tests
         run: bash scripts/run-tests.sh
+      - name: Run GlassIcon tests
+        run: bash extras/GlassIcon/scripts/run-tests.sh

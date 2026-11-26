@@ -4,4 +4,7 @@ __pycache__/
 *.corrupt-*
 *.tmp-*
 .venv/
+.venv-macos/
 venv/
+_site/
+.DS_Store

@@ -11,7 +11,7 @@
 # Settings -> Behavior ("Only auto-start in these sessions/WMs", default: sway).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 APP_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 CONF_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
@@ -38,6 +38,50 @@ if [ "$(id -u)" -eq 0 ] && [ -z "${GLASSDOCK_ALLOW_ROOT:-}" ]; then
 fi
 
 chmod +x "$ROOT"/bin/* "$ROOT"/scripts/*.sh "$ROOT"/install.sh 2>/dev/null || true
+
+if [ "$(uname -s)" = Darwin ]; then
+    [ "$DO_DEPS" = 0 ] || echo "macOS uses AppKit (PyObjC), not gtk-layer-shell."
+    command -v python3 >/dev/null 2>&1 || { echo "Python 3 is required" >&2; exit 1; }
+    if [ "$NO_CHECK" = 0 ]; then
+        if [ ! -x "$ROOT/.venv-macos/bin/python" ]; then
+            echo "==> Creating macOS virtual environment at $ROOT/.venv-macos"
+            python3 -m venv "$ROOT/.venv-macos"
+        fi
+        if ! "$ROOT/.venv-macos/bin/python" -c "import AppKit, Foundation, objc" >/dev/null 2>&1; then
+            echo "==> Installing pyobjc-framework-Cocoa into $ROOT/.venv-macos"
+            "$ROOT/.venv-macos/bin/python" -m pip install --disable-pip-version-check "pyobjc-framework-Cocoa>=10,<13"
+        fi
+        "$ROOT/.venv-macos/bin/python" -m py_compile "$ROOT/glassdock/macos.py"
+    fi
+    echo "==> Linking commands into $BIN_DIR"
+    mkdir -p "$BIN_DIR"
+    for cmd in glassdock glassdock-ctl glassdock-settings; do
+        target="$BIN_DIR/$cmd"
+        if [ -e "$target" ] && [ ! -L "$target" ]; then
+            echo "  skipping $target: a regular file already exists there" >&2
+            continue
+        fi
+        ln -sfn "$ROOT/bin/$cmd" "$target"
+        echo "  $target -> $ROOT/bin/$cmd"
+    done
+    if [ "$DO_AUTOSTART" = 1 ]; then
+        mkdir -p "$HOME/Library/LaunchAgents"
+        cat >"$HOME/Library/LaunchAgents/com.mandrusian.glassdock.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>com.mandrusian.glassdock</string>
+<key>ProgramArguments</key><array><string>$ROOT/bin/glassdock</string></array>
+<key>RunAtLoad</key><true/>
+<key>KeepAlive</key><false/>
+</dict></plist>
+PLIST
+        echo "  $HOME/Library/LaunchAgents/com.mandrusian.glassdock.plist"
+    fi
+    echo "Python macOS GlassDock preview installed. Run: $BIN_DIR/glassdock"
+    echo "Right-click the dock for GlassDock Settings or Quit; advanced Linux plugins are not yet supported."
+    exit 0
+fi
 
 if [ "$DO_DEPS" = 1 ]; then
     "$ROOT/scripts/install-deps.sh"

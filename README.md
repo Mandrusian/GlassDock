@@ -55,5 +55,7 @@ cd GlassDock
 
 - [Advanced README](README-advanced.md) — setup, controls, configuration, autostart, updates, uninstalling, and troubleshooting.
 - [GlassIcon Studio](extras/GlassIcon/README.md) — companion icon tool.
+- [macOS preview](macos/README.md) — experimental PyObjC AppKit dock backend.
+- [X11 / Termux:X11 support](x11-support/README.md) — experimental lightweight EWMH X11 starter backend.
 - [License](LICENSE)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)

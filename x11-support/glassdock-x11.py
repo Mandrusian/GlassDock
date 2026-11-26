@@ -86,6 +86,7 @@ class X11Dock:
         self.fg = color_pixel(self.disp, self.screen, cfg["foreground"])
         self.accent = color_pixel(self.disp, self.screen, cfg["accent"])
         self.gc = self.root.create_gc(foreground=self.fg, background=self.bg)
+        self.bg_gc = self.root.create_gc(foreground=self.bg, background=self.bg)
         self.active_gc = self.root.create_gc(foreground=self.accent, background=self.bg)
         self.font = self.disp.open_font("fixed")
         self.gc.change(font=self.font)
@@ -132,7 +133,7 @@ class X11Dock:
 
     def draw(self):
         self.window.clear_area()
-        self.window.fill_rectangle(self.gc, 0, 0, self.dock_w, self.height)
+        self.window.fill_rectangle(self.bg_gc, 0, 0, self.dock_w, self.height)
         tile_h = max(24, self.height - 12)
         y = (self.height - tile_h) // 2
         for i, item in enumerate(self.launchers):

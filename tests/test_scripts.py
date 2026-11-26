@@ -4,6 +4,7 @@ These run entirely inside a temporary HOME; nothing on the real system is touche
 """
 import glob
 import os
+import platform
 import shutil
 import subprocess
 import tempfile
@@ -12,7 +13,12 @@ import unittest
 from glassdock.core.envutil import child_env
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SCRIPTS = sorted(glob.glob(os.path.join(ROOT, "scripts", "*.sh")) + glob.glob(os.path.join(ROOT, "bin", "*")))
+EXECUTABLE_SCRIPTS = sorted(glob.glob(os.path.join(ROOT, "scripts", "*.sh")) + glob.glob(os.path.join(ROOT, "bin", "*")))
+SCRIPTS = sorted(
+    EXECUTABLE_SCRIPTS
+    + [os.path.join(ROOT, "installer.sh"), os.path.join(ROOT, "install.sh"),
+       os.path.join(ROOT, "x11-support", "install-deps.sh")]
+)
 BASH = shutil.which("bash")
 
 
@@ -32,7 +38,7 @@ class ScriptSyntax(unittest.TestCase):
                 self.assertEqual(r.returncode, 0, r.stderr)
 
     def test_scripts_are_executable(self):
-        for path in SCRIPTS:
+        for path in EXECUTABLE_SCRIPTS:
             with self.subTest(script=os.path.basename(path)):
                 self.assertTrue(os.access(path, os.X_OK))
 
@@ -143,8 +149,12 @@ class InstallUninstall(unittest.TestCase):
             link = os.path.join(self.bin, cmd)
             self.assertTrue(os.path.islink(link))
             self.assertEqual(os.path.realpath(link), os.path.join(ROOT, "bin", cmd))
-        with open(self.app) as f:
-            self.assertIn("glassdock-settings", f.read())
+        plist = os.path.join(self.home, "Library", "LaunchAgents", "com.mandrusian.glassdock.plist")
+        if platform.system() == "Darwin":
+            self.assertTrue(os.path.exists(plist))
+        else:
+            with open(self.app) as f:
+                self.assertIn("glassdock-settings", f.read())
 
         cfg = os.path.join(self.home, ".config", "glassdock")
         os.makedirs(cfg)
@@ -153,7 +163,7 @@ class InstallUninstall(unittest.TestCase):
         r = run([os.path.join(ROOT, "scripts", "uninstall.sh")], self.home)
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         self.assertEqual(os.listdir(self.bin), [])
-        self.assertFalse(os.path.exists(self.app))
+        self.assertFalse(os.path.exists(plist if platform.system() == "Darwin" else self.app))
         self.assertTrue(os.path.exists(os.path.join(cfg, "config.json")), "settings must survive a normal uninstall")
         self.assertTrue(os.path.isdir(ROOT))
 
@@ -174,6 +184,67 @@ class InstallUninstall(unittest.TestCase):
             f.write("#!/bin/sh\n")
         run([os.path.join(ROOT, "scripts", "uninstall.sh")], self.home)
         self.assertTrue(os.path.exists(foreign))
+
+    @unittest.skipUnless(platform.system() == "Darwin", "macOS LaunchAgent check")
+    def test_macos_install_writes_and_uninstall_removes_launchagent(self):
+        r = run([os.path.join(ROOT, "scripts", "install.sh"), "--no-check", "--autostart"], self.home)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        plist = os.path.join(self.home, "Library", "LaunchAgents", "com.mandrusian.glassdock.plist")
+        self.assertTrue(os.path.exists(plist))
+        with open(plist, encoding="utf-8") as f:
+            self.assertIn(os.path.join(ROOT, "bin", "glassdock"), f.read())
+        r = run([os.path.join(ROOT, "scripts", "uninstall.sh")], self.home)
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertFalse(os.path.exists(plist))
+
+
+@unittest.skipUnless(BASH, "bash required")
+class TermuxDepsTests(unittest.TestCase):
+    def setUp(self):
+        self.home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.home, True)
+        self.bindir = os.path.join(self.home, "fake-bin")
+        os.makedirs(self.bindir)
+        self.log = os.path.join(self.home, "pkg.log")
+        pkg = os.path.join(self.bindir, "pkg")
+        with open(pkg, "w", encoding="utf-8") as f:
+            f.write(f"#!/bin/sh\nprintf '%s\\n' \"$*\" >> {self.log!r}\n")
+        os.chmod(pkg, 0o755)
+        self.path = self.bindir + os.pathsep + os.environ.get("PATH", "/usr/bin:/bin")
+
+    def test_termux_version_uses_pkg_without_sudo(self):
+        r = run(
+            [os.path.join(ROOT, "scripts", "install-deps.sh")],
+            self.home,
+            PATH=self.path,
+            TERMUX_VERSION="0.118",
+        )
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        with open(self.log, encoding="utf-8") as f:
+            calls = f.read().splitlines()
+        self.assertEqual(calls[0], "update")
+        self.assertIn("install -y python python-gobject python-cairo gtk3 gtk-layer-shell", calls[1])
+
+    def test_termux_prefix_detected_without_termux_version(self):
+        r = run(
+            [os.path.join(ROOT, "scripts", "install-deps.sh")],
+            self.home,
+            PATH=self.path,
+            TERMUX_VERSION="",
+            PREFIX="/data/data/com.termux/files/usr",
+        )
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        self.assertTrue(os.path.exists(self.log))
+
+    def test_installer_termux_dry_run_status(self):
+        r = run(
+            [BASH, os.path.join(ROOT, "installer.sh"), "--no-color", "--dry-run", "--action", "status"],
+            self.home,
+            TERMUX_VERSION="0.118",
+        )
+        self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
+        if platform.system() != "Darwin":
+            self.assertIn("Termux detected", r.stderr)
 
 
 class ChildEnv(unittest.TestCase):

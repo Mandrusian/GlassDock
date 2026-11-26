@@ -33,6 +33,13 @@ class MockSway(threading.Thread):
             self._srv.close()
         except OSError:
             pass
+        with self._lock:
+            for c in list(self._subs):
+                try:
+                    c.close()
+                except OSError:
+                    pass
+            self._subs.clear()
 
     @staticmethod
     def _pack(mtype, obj):
@@ -91,6 +98,14 @@ class MockSway(threading.Thread):
                 conn.sendall(self._pack(mtype, reply))
         except OSError:
             pass
+        finally:
+            with self._lock:
+                if conn in self._subs:
+                    self._subs.remove(conn)
+            try:
+                conn.close()
+            except OSError:
+                pass
 
 
 def sample_tree():

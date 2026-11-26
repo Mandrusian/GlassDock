@@ -40,10 +40,10 @@ python x11-support/glassdock-x11.py
 Or with a custom JSON config:
 
 ```sh
-python x11-support/glassdock-x11.py --config ~/.config/glassdock-x11.json
+python x11-support/glassdock-x11.py --config ~/.config/glassdock-x11/config.json
 ```
 
-The first run creates `~/.config/glassdock-x11.json` with example launchers if it does not exist. Edit each item's `name` and `command` to match programs installed on your system. Commands are executed without a shell.
+The first run creates `~/.config/glassdock-x11/config.json` with example launchers if it does not exist. Edit each item's `name` and `command` to match programs installed on your system. Commands are executed without a shell.
 
 ## i3 autostart
 

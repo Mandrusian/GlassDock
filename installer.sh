@@ -15,6 +15,10 @@ BIN="${XDG_BIN_HOME:-$HOME/.local/bin}"
 CONF="${XDG_CONFIG_HOME:-$HOME/.config}"
 DATA="${XDG_DATA_HOME:-$HOME/.local/share}"
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}"
+# Termux runs without root and uses its own package prefix; never assume sudo.
+IS_TERMUX=0
+case "${PREFIX:-}" in /data/data/com.termux/files/usr|/data/user/0/com.termux/files/usr) IS_TERMUX=1;; esac
+[ -z "${TERMUX_VERSION:-}" ] || IS_TERMUX=1
 DEST="${GLASSDOCK_INSTALL_DIR:-$DATA/GlassDock}"
 DEST_FORCED=0; [ -z "${GLASSDOCK_INSTALL_DIR:-}" ] || DEST_FORCED=1
 APP="$DATA/applications"
@@ -150,6 +154,7 @@ _redraw_pick() { printf '\033[%dA' "$n" >"$TTY"; _draw; }
 has_glassdock() {
   [ -e "$BIN/glassdock" ] || [ -L "$BIN/glassdock" ] ||
   [ -e "$APP/glassdock-settings.desktop" ] || [ -e "$AUTO/glassdock.desktop" ] ||
+  [ -e "$HOME/Library/LaunchAgents/com.mandrusian.glassdock.plist" ] ||
   [ -d "$CONF/glassdock" ] || dock_running
 }
 has_moderndock() {
@@ -160,7 +165,13 @@ has_moderndock() {
   pgrep -u "$(id -u)" -f 'moderndock\.' >/dev/null 2>&1
 }
 has_glassicon() { [ -e "$BIN/glassicon" ] || [ -L "$BIN/glassicon" ] || [ -e "$APP/glassicon.desktop" ]; }
-dock_running() { pgrep -u "$(id -u)" -f 'glassdock\.dock' >/dev/null 2>&1; }
+dock_running() {
+  if [ "$(uname -s)" = Darwin ]; then
+    pgrep -u "$(id -u)" -f 'glassdock\.macos' >/dev/null 2>&1
+  else
+    pgrep -u "$(id -u)" -f 'glassdock\.dock' >/dev/null 2>&1
+  fi
+}
 in_session() { [ -n "${WAYLAND_DISPLAY:-}" ] || [ -n "${SWAYSOCK:-}" ]; }
 
 # Where is this script running from? (a checkout, or piped from curl)
@@ -213,7 +224,7 @@ show_status() {
     dirty) row "Source" "$DEST ${D}($CK_BRANCH @ $CK_HEAD)${X} ${Y}${S_WARN} $CK_DIRTY local change(s)${X}";;
   esac
   [ -z "$LOCAL_ROOT" ] || row "This folder" "${D}$LOCAL_ROOT (a GlassDock checkout)${X}"
-  if in_session; then row "Session" "${D}Wayland ${XDG_CURRENT_DESKTOP:-${XDG_SESSION_DESKTOP:-detected}}${X}"; else row "Session" "${D}no Wayland session in this shell${X}"; fi
+  if [ "$(uname -s)" = Darwin ]; then row "Session" "${D}macOS Aqua (experimental PyObjC backend)${X}"; elif in_session; then row "Session" "${D}Wayland ${XDG_CURRENT_DESKTOP:-${XDG_SESSION_DESKTOP:-detected}}${X}"; else row "Session" "${D}no Wayland session in this shell${X}"; fi
   printf '\n' >&2
 }
 
@@ -221,6 +232,14 @@ show_status() {
 PY_OK=1; GI_OK=1; LS_OK=1
 preflight() {
   step "Checking your system"
+  if [ "$(uname -s)" = Darwin ]; then
+    PY_OK=1; GI_OK=1; LS_OK=1
+    command -v python3 >/dev/null 2>&1 || PY_OK=0
+    if [ "$PY_OK" = 1 ]; then ok "python3 (macOS PyObjC backend)"; else bad "python3 ${D}(missing)${X}"; fi
+    if command -v git >/dev/null 2>&1; then ok "git"; elif command -v curl >/dev/null 2>&1; then warn "git missing; will download a tarball with curl instead"; else bad "git or curl ${D}(one is required)${X}"; die "Install git or curl first."; fi
+    case ":$PATH:" in *":$BIN:"*) ok "$BIN is on your PATH";; *) warn "$BIN is not on your PATH; commands like glassdock won't be found until it is";; esac
+    return 0
+  fi
   command -v python3 >/dev/null 2>&1 || PY_OK=0
   if [ "$PY_OK" = 1 ]; then
     python3 -c 'import gi; gi.require_version("Gtk","3.0")' >/dev/null 2>&1 || GI_OK=0
@@ -231,7 +250,10 @@ preflight() {
   _check "GTK 3 Python bindings (python3-gobject, gtk3)" "$GI_OK"
   _check "gtk-layer-shell" "$LS_OK"
   if command -v git >/dev/null 2>&1; then ok "git"; elif command -v curl >/dev/null 2>&1; then warn "git missing; will download a tarball with curl instead"; else bad "git or curl ${D}(one is required)${X}"; die "Install git or curl first."; fi
-  command -v sway >/dev/null 2>&1 && ok "sway" || warn "sway not found on PATH (the dock needs Sway/SwayFX on Wayland)"
+  command -v sway >/dev/null 2>&1 && ok "sway" || warn "sway not found on PATH (the dock needs a Wayland compositor with layer-shell support)"
+  if [ "$IS_TERMUX" = 1 ]; then
+    warn "Termux detected: dependencies use pkg and no sudo. GlassDock is a Wayland desktop dock, not an Android launcher; it only runs when a compatible Wayland compositor/session is available."
+  fi
   case ":$PATH:" in *":$BIN:"*) ok "$BIN is on your PATH";; *) warn "$BIN is not on your PATH; commands like glassdock won't be found until it is";; esac
 }
 deps_missing() { [ "$PY_OK" = 0 ] || [ "$GI_OK" = 0 ] || [ "$LS_OK" = 0 ]; }
@@ -411,14 +433,22 @@ choose_source() {
 supports() { grep -q -- "$1" "$DEST/scripts/install.sh" 2>/dev/null; }
 
 maybe_install_deps() {
+  if [ "$(uname -s)" = Darwin ]; then
+    warn "macOS uses AppKit (PyObjC), not GTK or gtk-layer-shell; skipping Linux dependencies."
+    return 0
+  fi
   local want=0
   if [ "$FORCE_DEPS" = 1 ] || [ "${GLASSDOCK_INSTALL_DEPS:-}" = y ] || [ "${GLASSDOCK_INSTALL_DEPS:-}" = Y ]; then want=1
   elif deps_missing; then
     step "Dependencies"
     warn "Some required packages are missing (see the checklist above)."
     if interactive; then
-      if confirm "Install them now with scripts/install-deps.sh? (asks for your sudo password)" y; then want=1; fi
-    else note "Not installing them unattended. Re-run with --deps (or GLASSDOCK_INSTALL_DEPS=y) to allow sudo."; fi
+      if [ "$IS_TERMUX" = 1 ]; then
+        if confirm "Install missing dependencies with Termux pkg?" y; then want=1; fi
+      else
+        if confirm "Install them now with scripts/install-deps.sh? (may ask for your sudo password)" y; then want=1; fi
+      fi
+    else note "Not installing them unattended. Re-run with --deps (or GLASSDOCK_INSTALL_DEPS=y) to install dependencies."; fi
   fi
   if [ "$want" = 1 ]; then
     if [ -x "$DEST/scripts/install-deps.sh" ]; then run "$DEST/scripts/install-deps.sh"
@@ -430,7 +460,12 @@ maybe_install_deps() {
 
 INSTALL_ARGS=()
 ask_options() {
-  if supports '--autostart' && [ ! -e "$AUTO/glassdock.desktop" ]; then
+  # Desktop-session autostart entries do not launch from the Android app environment.
+  if [ "$IS_TERMUX" = 1 ]; then
+    INSTALL_ARGS+=(--no-autostart)
+    return 0
+  fi
+  if supports '--autostart' && [ ! -e "$AUTO/glassdock.desktop" ] && [ ! -e "$HOME/Library/LaunchAgents/com.mandrusian.glassdock.plist" ]; then
     if confirm "Start GlassDock automatically when you log in?" y; then INSTALL_ARGS+=(--autostart)
     elif supports '--no-autostart'; then INSTALL_ARGS+=(--no-autostart); fi
   fi
@@ -457,6 +492,7 @@ run_installer() {
 
 restart_dock() {
   command -v "$BIN/glassdock" >/dev/null 2>&1 || [ -x "$BIN/glassdock" ] || return 0
+  if [ "$(uname -s)" = Darwin ]; then return 0; fi
   if dock_running; then
     if confirm "GlassDock is running. Restart it to load the update?" y; then
       if [ -x "$BIN/glassdock-ctl" ]; then run "$BIN/glassdock-ctl" quit >/dev/null 2>&1 || true; else run pkill -u "$(id -u)" -f 'glassdock\.dock' || true; fi
@@ -517,8 +553,12 @@ safe_to_delete() {  # refuse anything that isn't clearly a GlassDock folder
 stop_dock() {
   if dock_running; then
     info "Stopping the running dock…"
-    if [ -x "$BIN/glassdock-ctl" ]; then run "$BIN/glassdock-ctl" quit >/dev/null 2>&1 || true; fi
-    pkill -u "$(id -u)" -f 'glassdock\.dock' >/dev/null 2>&1 || true
+    if [ "$(uname -s)" = Darwin ]; then
+      run pkill -u "$(id -u)" -f 'glassdock\.macos' || true
+    else
+      if [ -x "$BIN/glassdock-ctl" ]; then run "$BIN/glassdock-ctl" quit >/dev/null 2>&1 || true; fi
+      pkill -u "$(id -u)" -f 'glassdock\.dock' >/dev/null 2>&1 || true
+    fi
   fi
 }
 
@@ -546,7 +586,7 @@ uninstall_dock() {
       case "$resolved" in *GlassDock*|*ModernDock*|*glassdock*|*moderndock*) run rm -f -- "$target"; ok "Removed $target";; esac
     fi
   done
-  run rm -f -- "$APP/glassdock-settings.desktop" "$APP/moderndock-settings.desktop" "$AUTO/glassdock.desktop" "$AUTO/moderndock.desktop"
+  run rm -f -- "$APP/glassdock-settings.desktop" "$APP/moderndock-settings.desktop" "$AUTO/glassdock.desktop" "$AUTO/moderndock.desktop" "$HOME/Library/LaunchAgents/com.mandrusian.glassdock.plist"
   local root
   for root in "$DEST" "$HOME/GlassDock" "$HOME/ModernDock"; do
     if [ -x "$root/scripts/uninstall.sh" ]; then run "$root/scripts/uninstall.sh" || true; fi
@@ -590,7 +630,7 @@ Usage: installer.sh [options]
   --action NAME    install | glassicon | uninstall | uninstall-glassicon | status
   --dir PATH       where the managed source checkout lives (default: $DATA/GlassDock)
   --branch NAME    branch to install (default: $BRANCH)
-  --deps           also install system dependencies (uses sudo)
+  --deps           also install dependencies (uses pkg on Termux; otherwise system package manager)
   -y, --yes        accept the safe default for every question (no prompts)
   -n, --dry-run    show what would happen without changing anything
   --no-color       plain output
@@ -643,7 +683,7 @@ main() {
   parse_args "$@"
   [ "$(id -u)" -ne 0 ] || die "Run as your normal user, not root."
   case "$ACTION" in ""|install|glassicon|uninstall|uninstall-glassicon|status|quit) ;; *) die "Unknown action '$ACTION'.";; esac
-  log "start action='${ACTION:-menu}' dest=$DEST yes=$YES dry=$DRY tty=$HAVE_TTY"
+  log "start action='${ACTION:-menu}' dest=$DEST yes=$YES dry=$DRY tty=$HAVE_TTY termux=$IS_TERMUX"
   show_status
   [ -n "$ACTION" ] || choose_action
   case "$ACTION" in

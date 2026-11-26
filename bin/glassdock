@@ -1,7 +1,24 @@
 #!/usr/bin/env bash
 # GlassDock launcher: runs the project in place (no system-wide install).
-ROOT="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"
+SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SOURCE" ]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    TARGET="$(readlink "$SOURCE")"
+    case "$TARGET" in /*) SOURCE="$TARGET";; *) SOURCE="$DIR/$TARGET";; esac
+done
+ROOT="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
 export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+
+if [ "$(uname -s)" = Darwin ]; then
+    if [ -x "$ROOT/.venv-macos/bin/python" ]; then
+        exec "$ROOT/.venv-macos/bin/python" -m glassdock.macos "$@"
+    fi
+    if python3 -c "import AppKit, Foundation, objc" >/dev/null 2>&1; then
+        exec python3 -m glassdock.macos "$@"
+    fi
+    echo "macOS PyObjC runtime not found. Run '$ROOT/scripts/install.sh' to create .venv-macos." >&2
+    exit 1
+fi
 
 # "--autostart": only start when the settings allow it for this session / window manager.
 if [ "${1:-}" = "--autostart" ]; then
@@ -16,8 +33,8 @@ fi
 # Set GLASSDOCK_NO_PRELOAD=1 to disable.
 if [ -z "${GLASSDOCK_NO_PRELOAD:-}" ]; then
     lib=""
-    for d in /usr/lib64 /usr/lib /usr/lib/aarch64-linux-gnu /usr/lib/x86_64-linux-gnu; do
-        if [ -e "$d/libgtk-layer-shell.so.0" ]; then lib="$d/libgtk-layer-shell.so.0"; break; fi
+    for d in "${PREFIX:-}/lib" /usr/lib64 /usr/lib /usr/lib/aarch64-linux-gnu /usr/lib/x86_64-linux-gnu; do
+        if [ -n "$d" ] && [ -e "$d/libgtk-layer-shell.so.0" ]; then lib="$d/libgtk-layer-shell.so.0"; break; fi
     done
     if [ -z "$lib" ]; then
         lib="$( (/sbin/ldconfig -p 2>/dev/null || ldconfig -p 2>/dev/null) | awk '/libgtk-layer-shell\.so\.0 /{print $NF; exit}')"
